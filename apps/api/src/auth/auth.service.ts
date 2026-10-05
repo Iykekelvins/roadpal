@@ -6,11 +6,13 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import type { UserRole } from '@repo/shared';
 import { and, eq, sql } from 'drizzle-orm';
 import type { Env } from '../config/env.js';
 import { DB, type Database } from '../db/database.module.js';
 import { otpCodes, users } from '../db/schema.js';
+import { ACCESS_TOKEN_TTL_SECONDS, type AccessTokenPayload } from './access-token.js';
 import { checkOtp, generateOtp, hashOtp, OTP_TTL_SECONDS } from './otp.js';
 
 const OTP_ERRORS = {
@@ -27,6 +29,7 @@ export class AuthService {
   constructor(
     @Inject(DB) private readonly db: Database,
     private readonly config: ConfigService<Env, true>,
+    private readonly jwt: JwtService,
   ) {}
 
   async requestOtp(phone: string) {
@@ -84,8 +87,17 @@ export class AuthService {
       .returning();
     if (consumed.length === 0) throw new UnauthorizedException(OTP_ERRORS.not_found);
 
-    if (existing) return { user: existing, isNewUser: false };
-    return this.createUser(phone, role!);
+    const { user, isNewUser } = existing
+      ? { user: existing, isNewUser: false }
+      : await this.createUser(phone, role!);
+
+    return { ...(await this.issueTokens(user)), user, isNewUser };
+  }
+
+  private async issueTokens(user: { id: string; role: UserRole }) {
+    const payload: AccessTokenPayload = { sub: user.id, role: user.role };
+    const accessToken = await this.jwt.signAsync(payload);
+    return { accessToken, accessTokenExpiresIn: ACCESS_TOKEN_TTL_SECONDS };
   }
 
   private async createUser(phone: string, role: UserRole) {

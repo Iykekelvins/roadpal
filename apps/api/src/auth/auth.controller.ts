@@ -21,7 +21,6 @@ export class AuthController {
   @Post('otp/verify')
   @HttpCode(200)
   verifyOtp(@Body(new ZodValidationPipe(VerifyOtpSchema)) body: VerifyOtpInput) {
-    // Tokens are added in the next step; for now this returns the user.
     return this.auth.verifyOtp(body.phone, body.code, body.role);
   }
 }

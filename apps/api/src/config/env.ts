@@ -7,6 +7,7 @@ const EnvSchema = z.object({
   DATABASE_URL: z
     .url()
     .refine((url) => url.startsWith('postgres'), 'Must be a postgres:// connection string'),
+  JWT_ACCESS_SECRET: z.string().min(32, 'Must be at least 32 characters (see .env.example)'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
