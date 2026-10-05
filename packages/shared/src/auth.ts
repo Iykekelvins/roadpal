@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { UserRoleSchema } from './enums';
 
 // Accepts 0803..., 234803..., +234803... (spaces allowed); captures the 10-digit subscriber part.
 const NG_MOBILE = /^(?:\+?234|0)([789][01]\d{8})$/;
@@ -15,3 +16,11 @@ export type Phone = z.infer<typeof PhoneSchema>;
 
 export const RequestOtpSchema = z.object({ phone: PhoneSchema });
 export type RequestOtpInput = z.infer<typeof RequestOtpSchema>;
+
+export const VerifyOtpSchema = z.object({
+  phone: PhoneSchema,
+  code: z.string().trim().regex(/^\d{6}$/, 'Enter the 6-digit code'),
+  // Only needed when this phone has no account yet.
+  role: UserRoleSchema.optional(),
+});
+export type VerifyOtpInput = z.infer<typeof VerifyOtpSchema>;
