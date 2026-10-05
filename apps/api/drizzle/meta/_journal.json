@@ -15,6 +15,13 @@
       "when": 1791226885932,
       "tag": "0001_create_users",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791227477169,
+      "tag": "0002_create_otp_codes",
+      "breakpoints": true
     }
   ]
 }

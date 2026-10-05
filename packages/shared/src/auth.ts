@@ -12,3 +12,6 @@ export const PhoneSchema = z
   })
   .transform((value) => `+234${value.match(NG_MOBILE)![1]}`);
 export type Phone = z.infer<typeof PhoneSchema>;
+
+export const RequestOtpSchema = z.object({ phone: PhoneSchema });
+export type RequestOtpInput = z.infer<typeof RequestOtpSchema>;
