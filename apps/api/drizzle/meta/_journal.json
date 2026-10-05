@@ -22,6 +22,13 @@
       "when": 1791227477169,
       "tag": "0002_create_otp_codes",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791228406460,
+      "tag": "0003_create_refresh_tokens",
+      "breakpoints": true
     }
   ]
 }

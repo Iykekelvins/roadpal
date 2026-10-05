@@ -1,7 +1,9 @@
 import { Body, Controller, HttpCode, Post } from '@nestjs/common';
 import {
+  RefreshTokenSchema,
   RequestOtpSchema,
   VerifyOtpSchema,
+  type RefreshTokenInput,
   type RequestOtpInput,
   type VerifyOtpInput,
 } from '@repo/shared';
@@ -22,5 +24,17 @@ export class AuthController {
   @HttpCode(200)
   verifyOtp(@Body(new ZodValidationPipe(VerifyOtpSchema)) body: VerifyOtpInput) {
     return this.auth.verifyOtp(body.phone, body.code, body.role);
+  }
+
+  @Post('refresh')
+  @HttpCode(200)
+  refresh(@Body(new ZodValidationPipe(RefreshTokenSchema)) body: RefreshTokenInput) {
+    return this.auth.refresh(body.refreshToken);
+  }
+
+  @Post('logout')
+  @HttpCode(204)
+  async logout(@Body(new ZodValidationPipe(RefreshTokenSchema)) body: RefreshTokenInput) {
+    await this.auth.logout(body.refreshToken);
   }
 }

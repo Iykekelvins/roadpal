@@ -24,3 +24,6 @@ export const VerifyOtpSchema = z.object({
   role: UserRoleSchema.optional(),
 });
 export type VerifyOtpInput = z.infer<typeof VerifyOtpSchema>;
+
+export const RefreshTokenSchema = z.object({ refreshToken: z.string().min(1) });
+export type RefreshTokenInput = z.infer<typeof RefreshTokenSchema>;

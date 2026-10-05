@@ -8,12 +8,19 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import type { UserRole } from '@repo/shared';
-import { and, eq, sql } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
+import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import type { Env } from '../config/env.js';
 import { DB, type Database } from '../db/database.module.js';
-import { otpCodes, users } from '../db/schema.js';
+import { otpCodes, refreshTokens, users } from '../db/schema.js';
 import { ACCESS_TOKEN_TTL_SECONDS, type AccessTokenPayload } from './access-token.js';
 import { checkOtp, generateOtp, hashOtp, OTP_TTL_SECONDS } from './otp.js';
+import {
+  classifyUnclaimedRefresh,
+  generateRefreshToken,
+  hashRefreshToken,
+  REFRESH_TOKEN_TTL_SECONDS,
+} from './refresh-token.js';
 
 const OTP_ERRORS = {
   not_found: 'No active code for this number. Request a new code.',
@@ -94,10 +101,98 @@ export class AuthService {
     return { ...(await this.issueTokens(user)), user, isNewUser };
   }
 
-  private async issueTokens(user: { id: string; role: UserRole }) {
+  async refresh(refreshToken: string) {
+    const tokenHash = hashRefreshToken(refreshToken);
+    const now = new Date();
+
+    // Atomic claim: only one request can revoke a live token, so parallel refreshes can't both rotate it.
+    const [claimed] = await this.db
+      .update(refreshTokens)
+      .set({ revokedAt: now })
+      .where(
+        and(
+          eq(refreshTokens.tokenHash, tokenHash),
+          isNull(refreshTokens.revokedAt),
+          gt(refreshTokens.expiresAt, now),
+        ),
+      )
+      .returning();
+
+    let session = claimed;
+    if (!session) {
+      const [stored] = await this.db
+        .select()
+        .from(refreshTokens)
+        .where(eq(refreshTokens.tokenHash, tokenHash));
+      const result = classifyUnclaimedRefresh(stored, now);
+
+      if (result === 'reuse') {
+        this.logger.warn(`Refresh token reuse detected; revoking family ${stored!.familyId}`);
+        await this.revokeFamily(stored!.familyId, now);
+      }
+      // A retry only succeeds while the family is alive, so it can't revive a logged-out or revoked session.
+      if (result !== 'retry' || !(await this.familyIsActive(stored!.familyId, now))) {
+        throw new UnauthorizedException('Session expired. Log in again.');
+      }
+      session = stored!;
+    }
+
+    const [user] = await this.db.select().from(users).where(eq(users.id, session.userId));
+    if (!user) throw new UnauthorizedException('Session expired. Log in again.');
+
+    return this.issueTokens(user, session.familyId);
+  }
+
+  async logout(refreshToken: string) {
+    const [stored] = await this.db
+      .select({ familyId: refreshTokens.familyId })
+      .from(refreshTokens)
+      .where(eq(refreshTokens.tokenHash, hashRefreshToken(refreshToken)));
+    // Unknown tokens are ignored: logout is idempotent and doesn't reveal whether a token existed.
+    if (stored) await this.revokeFamily(stored.familyId, new Date());
+  }
+
+  private async revokeFamily(familyId: string, now: Date) {
+    await this.db
+      .update(refreshTokens)
+      .set({ revokedAt: now })
+      .where(and(eq(refreshTokens.familyId, familyId), isNull(refreshTokens.revokedAt)));
+  }
+
+  private async familyIsActive(familyId: string, now: Date) {
+    const [live] = await this.db
+      .select({ id: refreshTokens.id })
+      .from(refreshTokens)
+      .where(
+        and(
+          eq(refreshTokens.familyId, familyId),
+          isNull(refreshTokens.revokedAt),
+          gt(refreshTokens.expiresAt, now),
+        ),
+      )
+      .limit(1);
+    return Boolean(live);
+  }
+
+  // A new login starts a new family; refreshes continue the existing one.
+  private async issueTokens(user: { id: string; role: UserRole }, familyId: string = randomUUID()) {
     const payload: AccessTokenPayload = { sub: user.id, role: user.role };
     const accessToken = await this.jwt.signAsync(payload);
-    return { accessToken, accessTokenExpiresIn: ACCESS_TOKEN_TTL_SECONDS };
+
+    const refreshToken = generateRefreshToken();
+    await this.db.insert(refreshTokens).values({
+      userId: user.id,
+      familyId,
+      tokenHash: hashRefreshToken(refreshToken),
+      expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_SECONDS * 1000),
+    });
+
+    return {
+      accessToken,
+      accessTokenExpiresIn: ACCESS_TOKEN_TTL_SECONDS,
+      refreshToken,
+      refreshTokenExpiresIn: REFRESH_TOKEN_TTL_SECONDS,
+    };
   }
 
   private async createUser(phone: string, role: UserRole) {
