@@ -18,7 +18,11 @@ export type Database = NodePgDatabase<typeof schema>;
       provide: PG_POOL,
       inject: [ConfigService],
       useFactory: (config: ConfigService<Env, true>) =>
-        new Pool({ connectionString: config.get('DATABASE_URL', { infer: true }) }),
+        new Pool({
+          connectionString: config.get('DATABASE_URL', { infer: true }),
+          // Fail instead of hanging if the DB is unreachable; leaves room for Neon's cold start.
+          connectionTimeoutMillis: 10_000,
+        }),
     },
     {
       provide: DB,
