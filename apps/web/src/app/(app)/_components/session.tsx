@@ -19,6 +19,8 @@ interface Session {
    * this in their effect dependencies to refetch the REST view whenever the connection comes back.
    */
   connection: number;
+  /** After the user edits their own details (e.g. their name). */
+  setMe: (me: Me) => void;
   signOut: () => Promise<void>;
 }
 
@@ -77,9 +79,11 @@ export function SessionProvider({ role, children }: { role: UserRole; children: 
     };
   }, [role, router, attempt]);
 
-  // 2. One socket for the whole signed-in area, connected once we know who's signed in.
+  // 2. One socket for the whole signed-in area, connected once we know who's signed in. Keyed on
+  // the user's id, not the whole object: editing their name mustn't drop the live connection.
+  const userId = me?.id;
   useEffect(() => {
-    if (!me || !socket) return;
+    if (!userId || !socket) return;
     const s = socket;
     let stopped = false;
 
@@ -120,7 +124,7 @@ export function SessionProvider({ role, children }: { role: UserRole; children: 
       s.off("connect_error", onConnectError);
       s.disconnect();
     };
-  }, [me, socket, role, router]);
+  }, [userId, socket, role, router]);
 
   async function signOut() {
     socket?.disconnect();
@@ -150,7 +154,7 @@ export function SessionProvider({ role, children }: { role: UserRole; children: 
   if (!me || !socket) return <p className="text-muted">Loading…</p>;
 
   return (
-    <SessionContext value={{ me, socket, status, connection, signOut }}>
+    <SessionContext value={{ me, socket, status, connection, setMe, signOut }}>
       {/* Only after a first successful connection: the initial connect is part of "Loading". */}
       {status !== "online" && connection > 0 && (
         <p role="status" className="mb-6 flex items-center gap-2 rounded-2xl bg-signal-soft px-4 py-3 text-sm font-semibold text-on-signal-soft">

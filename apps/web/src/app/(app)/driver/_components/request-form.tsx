@@ -1,47 +1,15 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ISSUE_TYPES, VEHICLE_TYPES, type IssueType, type LatLng, type VehicleType } from "@repo/shared";
+import { ISSUE_TYPES, VEHICLE_TYPES, type IssueType, type VehicleType } from "@repo/shared";
 import { LocateFixed, MapPin } from "lucide-react";
 import { buttonStyles } from "@/components/button-styles";
 import { ApiError, NetworkError } from "@/lib/api";
 import { ISSUE_LABELS, VEHICLE_LABELS } from "@/lib/labels";
+import { locate, type Fix } from "@/lib/geolocation";
 import { createRequest, type DriverRequest } from "@/lib/requests";
 
 const NOTE_MAX = 280;
-
-type Fix =
-  | { state: "idle" }
-  | { state: "locating" }
-  | { state: "found"; location: LatLng; accuracyMeters: number }
-  | { state: "failed"; message: string };
-
-function locate(): Promise<Fix> {
-  return new Promise((resolve) => {
-    if (!("geolocation" in navigator)) {
-      resolve({ state: "failed", message: "This browser can’t share your location." });
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (position) =>
-        resolve({
-          state: "found",
-          location: { lat: position.coords.latitude, lng: position.coords.longitude },
-          accuracyMeters: Math.round(position.coords.accuracy),
-        }),
-      (error) =>
-        resolve({
-          state: "failed",
-          message:
-            error.code === error.PERMISSION_DENIED
-              ? "Location is blocked. Allow it for this site in your browser settings, then try again."
-              : "Couldn’t get your location. Move to open sky if you can, and try again.",
-        }),
-      // GPS-quality fix; a reading up to 30s old is fine (you're stopped by the road).
-      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 30_000 },
-    );
-  });
-}
 
 export function RequestForm({
   notice,

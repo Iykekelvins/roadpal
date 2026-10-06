@@ -90,3 +90,13 @@ export function setAccessToken(token: string | null) {
 export function getAccessToken() {
   return accessToken;
 }
+
+/**
+ * A message to show for any caught error. API and connection errors already read well; anything
+ * else is a bug, so it's logged, and in development its real message is shown instead of hidden.
+ */
+export function describeError(error: unknown, fallback = "Something went wrong. Try again."): string {
+  if (error instanceof ApiError || error instanceof NetworkError) return error.message;
+  console.error(error);
+  return process.env.NODE_ENV === "development" && error instanceof Error ? `${fallback} (${error.message})` : fallback;
+}

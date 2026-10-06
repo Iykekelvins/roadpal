@@ -1,4 +1,4 @@
-import type { UserRole } from "@repo/shared";
+import type { UpdateMeInput, UserRole } from "@repo/shared";
 import { api, refreshSession, setAccessToken } from "./api";
 
 /** The signed-in user, as GET /users/me returns it. */
@@ -45,3 +45,7 @@ export async function logout() {
 
 /** Where each role lands after logging in. */
 export const HOME: Record<UserRole, string> = { driver: "/driver", provider: "/provider" };
+
+export function updateMe(input: UpdateMeInput) {
+  return api<Me>("/users/me", { method: "PATCH", body: JSON.stringify(input) });
+}
