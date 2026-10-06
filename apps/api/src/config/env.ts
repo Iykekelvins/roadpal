@@ -8,6 +8,11 @@ const EnvSchema = z.object({
     .url()
     .refine((url) => url.startsWith('postgres'), 'Must be a postgres:// connection string'),
   JWT_ACCESS_SECRET: z.string().min(32, 'Must be at least 32 characters (see .env.example)'),
+  // Background sweeps (expiry, radius widening, cleanup). Can be turned off, e.g. for local debugging.
+  SWEEPS_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

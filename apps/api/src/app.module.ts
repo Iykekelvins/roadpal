@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { validateEnv } from './config/env.js';
 import { DatabaseModule } from './db/database.module.js';
 import { AuthModule } from './auth/auth.module.js';
@@ -10,11 +11,13 @@ import { ProvidersModule } from './providers/providers.module.js';
 import { RatingsModule } from './ratings/ratings.module.js';
 import { RealtimeModule } from './realtime/realtime.module.js';
 import { RequestsModule } from './requests/requests.module.js';
+import { SweepsModule } from './sweeps/sweeps.module.js';
 import { UsersModule } from './users/users.module.js';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
+    ScheduleModule.forRoot(),
     DatabaseModule,
     HealthModule,
     AuthModule,
@@ -25,6 +28,7 @@ import { UsersModule } from './users/users.module.js';
     OffersModule,
     JobsModule,
     RatingsModule,
+    SweepsModule,
   ],
 })
 export class AppModule {}

@@ -33,6 +33,10 @@ export interface ServerToClientEvents {
   'offer:rejected': (payload: { offerId: string; requestId: string }) => void;
   /** To a driver: a provider's offer was withdrawn because they took another job. */
   'offer:withdrawn': (payload: { offerId: string; requestId: string }) => void;
+  /** To the driver and the provider: an offer expired before it was accepted. */
+  'offer:expired': (payload: { offerId: string; requestId: string }) => void;
+  /** To the driver: their request got no accepted offer in time. */
+  'request:expired': (payload: { requestId: string }) => void;
   /** To both participants: the job's status changed. */
   'job:updated': (job: JobView) => void;
   /** To the driver while their job is en route: the provider's latest position. */
