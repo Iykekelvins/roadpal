@@ -21,6 +21,12 @@ export class ProvidersController {
     return this.providers.getProfile(user.id);
   }
 
+  // Catch-up view (startup, reconnect). Phase 5 adds live pushes on top of this.
+  @Get('me/nearby-requests')
+  nearbyRequests(@CurrentUser() user: AuthUser) {
+    return this.providers.nearbyRequests(user.id);
+  }
+
   @Put('me/profile')
   upsertProfile(
     @CurrentUser() user: AuthUser,

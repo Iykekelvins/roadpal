@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 import type { Database } from '../src/db/database.module.js';
 import * as schema from '../src/db/schema.js';
 import { findMatchingProviders } from '../src/matching/find-matching-providers.js';
+import { findNearbyRequests } from '../src/matching/find-nearby-requests.js';
 
 // Integration test: the matching rules live in SQL, so they're tested against real Postgres + PostGIS.
 // Everything runs in a transaction that is rolled back, so the database is left untouched.
@@ -96,6 +97,60 @@ describe('findMatchingProviders', () => {
 
       expect(at10.some((m) => m.providerId === user!.id)).toBe(false);
       expect(at20.some((m) => m.providerId === user!.id)).toBe(true);
+    });
+  });
+});
+
+describe('findNearbyRequests', () => {
+  it('returns only open, unexpired, in-range requests the provider can handle, nearest first', async () => {
+    await inRolledBackTransaction(async (tx) => {
+      type Fixture = { km: number; issue: 'flat_tyre' | 'needs_air'; searchKm?: number; status?: 'cancelled'; expired?: boolean };
+      const fixtures: Record<string, Fixture> = {
+        near: { km: 3, issue: 'flat_tyre' },
+        farther: { km: 8, issue: 'flat_tyre' },
+        beyondProviderRadius: { km: 13, issue: 'flat_tyre', searchKm: 20 },
+        beyondRequestRadius: { km: 9, issue: 'flat_tyre', searchKm: 5 },
+        wrongService: { km: 1, issue: 'needs_air' },
+        cancelled: { km: 1, issue: 'flat_tyre', status: 'cancelled' },
+        expired: { km: 1, issue: 'flat_tyre', expired: true },
+      };
+      const names = Object.keys(fixtures);
+
+      // One driver per request: the one-active-request rule applies.
+      const drivers = await tx
+        .insert(schema.users)
+        .values(names.map((_, i) => ({ phone: `+23470001${String(i).padStart(5, '0')}`, role: 'driver' as const })))
+        .returning({ id: schema.users.id });
+
+      const created = await tx
+        .insert(schema.requests)
+        .values(
+          names.map((name, i) => {
+            const f = fixtures[name]!;
+            return {
+              driverId: drivers[i]!.id,
+              location: north(f.km),
+              vehicleType: 'car' as const,
+              issueType: f.issue,
+              status: f.status ?? ('open' as const),
+              searchRadiusKm: f.searchKm ?? 10,
+              expiresAt: new Date(Date.now() + (f.expired ? -60_000 : 600_000)),
+            };
+          }),
+        )
+        .returning({ id: schema.requests.id });
+      const nameOf = Object.fromEntries(names.map((name, i) => [created[i]!.id, name]));
+
+      const nearby = await findNearbyRequests(tx, {
+        location: SAGAMU,
+        services: ['flat_tyre', 'puncture'],
+        serviceRadiusKm: 10,
+      });
+      const ours = nearby.filter((r) => nameOf[r.id]);
+
+      expect(ours.map((r) => nameOf[r.id])).toEqual(['near', 'farther']);
+      // Exact coordinates are not exposed before an offer is accepted.
+      expect(ours[0]).not.toHaveProperty('location');
     });
   });
 });

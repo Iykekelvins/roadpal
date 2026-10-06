@@ -8,6 +8,7 @@ import {
 import { and, eq, isNull, lt, or, sql } from 'drizzle-orm';
 import { DB, type Database } from '../db/database.module.js';
 import { providerProfiles } from '../db/schema.js';
+import { findNearbyRequests } from '../matching/find-nearby-requests.js';
 
 type ProviderProfileRow = typeof providerProfiles.$inferSelect;
 
@@ -96,5 +97,22 @@ export class ProvidersService {
     if (!profile.isOnline) throw new ConflictException('Go online before sending your location');
     // Throttled: not an error, so the app doesn't retry and make it worse.
     return { accepted: false, lastLocationAt: profile.lastLocationAt };
+  }
+
+  async nearbyRequests(userId: string) {
+    const [profile] = await this.db
+      .select()
+      .from(providerProfiles)
+      .where(eq(providerProfiles.userId, userId));
+    if (!profile) throw new NotFoundException('Provider profile not set up yet');
+    if (!profile.isOnline || !profile.lastLocation) {
+      throw new ConflictException('Go online to see nearby requests');
+    }
+    const nearby = await findNearbyRequests(this.db, {
+      location: profile.lastLocation,
+      services: profile.services,
+      serviceRadiusKm: profile.serviceRadiusKm,
+    });
+    return { requests: nearby };
   }
 }
