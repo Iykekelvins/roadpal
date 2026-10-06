@@ -4,8 +4,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { isUniqueViolation } from '../common/db-errors.js';
 import { DB, type Database } from '../db/database.module.js';
 import { requests } from '../db/schema.js';
-import { findMatchingProviders } from '../matching/find-matching-providers.js';
-import { toNearbyRequest } from '../matching/find-nearby-requests.js';
+import { dispatchRequest } from '../matching/dispatch-request.js';
 import { RealtimeGateway } from '../realtime/realtime.gateway.js';
 
 @Injectable()
@@ -25,15 +24,8 @@ export class RequestsService {
           expiresAt: sql`now() + make_interval(mins => ${REQUEST_TTL_MINUTES})`,
         })
         .returning();
-      const matches = await findMatchingProviders(this.db, request!);
-
-      // Pushed only after the insert succeeded. Fire-and-forget: providers who aren't connected
-      // pick it up from the nearby-requests feed when they reconnect.
-      for (const match of matches) {
-        this.realtime.emitToUser(match.providerId, 'request:new', toNearbyRequest(request!, match.distanceMeters));
-      }
-
-      return { ...request!, matchedProviderCount: matches.length };
+      const matchedProviderCount = await dispatchRequest(this.db, this.realtime, request!);
+      return { ...request!, matchedProviderCount };
     } catch (error) {
       // The partial unique index is the source of truth, so this holds even for simultaneous taps.
       if (isUniqueViolation(error, 'requests_one_active_per_driver')) {

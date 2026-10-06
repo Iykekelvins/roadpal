@@ -1,6 +1,7 @@
 import {
   ACTIVE_JOB_STATUSES,
   ACTIVE_REQUEST_STATUSES,
+  CANCEL_REASONS,
   INITIAL_SEARCH_RADIUS_KM,
   ISSUE_TYPES,
   JOB_STATUSES,
@@ -34,6 +35,7 @@ export const vehicleType = pgEnum('vehicle_type', VEHICLE_TYPES);
 export const requestStatus = pgEnum('request_status', REQUEST_STATUSES);
 export const offerStatus = pgEnum('offer_status', OFFER_STATUSES);
 export const jobStatus = pgEnum('job_status', JOB_STATUSES);
+export const cancelReason = pgEnum('cancel_reason', CANCEL_REASONS);
 
 export const users = pgTable('users', {
   id: uuid().primaryKey().defaultRandom(),
@@ -140,8 +142,12 @@ export const offers = pgTable(
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    // One offer per provider per request. Leading request_id also serves "offers for request X".
-    uniqueIndex('offers_one_per_provider_per_request').on(t.requestId, t.providerId),
+    // One live offer per provider per request. Partial so that, if a request reopens after a
+    // cancellation, providers whose offers were rejected can bid again, while the cancelled
+    // provider's accepted offer still blocks them. Leading request_id also serves "offers for X".
+    uniqueIndex('offers_one_per_provider_per_request')
+      .on(t.requestId, t.providerId)
+      .where(statusIn(['pending', 'accepted'])),
     check('offers_price_positive', sql`${t.priceNaira} > 0`),
     check('offers_eta_positive', sql`${t.etaMinutes} > 0`),
   ],
@@ -170,6 +176,9 @@ export const jobs = pgTable(
     startedAt: timestamp({ withTimezone: true }),
     completedAt: timestamp({ withTimezone: true }),
     cancelledAt: timestamp({ withTimezone: true }),
+    cancelledBy: userRole(),
+    cancelReason: cancelReason(),
+    cancelNote: text(),
   },
   (t) => [
     uniqueIndex('jobs_one_active_per_request').on(t.requestId).where(statusIn(ACTIVE_JOB_STATUSES)),

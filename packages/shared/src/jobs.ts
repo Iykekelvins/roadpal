@@ -1,4 +1,5 @@
-import type { IssueType, JobStatus, VehicleType } from './enums';
+import type { IssueType, JobStatus, UserRole, VehicleType } from './enums';
+import type { CancelReason } from './job-state-machine';
 import type { LatLng } from './geo';
 
 /**
@@ -23,6 +24,8 @@ export interface JobView {
   startedAt: string | null;
   completedAt: string | null;
   cancelledAt: string | null;
+  cancelledBy: UserRole | null;
+  cancelReason: CancelReason | null;
   driver: { id: string; name: string | null; phone: string };
   provider: { id: string; name: string | null; phone: string; ratingAvg: number | null; ratingCount: number };
 }

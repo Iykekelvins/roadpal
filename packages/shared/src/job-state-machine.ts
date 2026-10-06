@@ -40,3 +40,24 @@ export const isTerminalJobStatus = (status: JobStatus): boolean =>
 export const JOB_PROGRESS_STATUSES = ['en_route', 'arrived', 'in_progress', 'completed'] as const;
 export const UpdateJobStatusSchema = z.object({ status: z.enum(JOB_PROGRESS_STATUSES) });
 export type UpdateJobStatusInput = z.infer<typeof UpdateJobStatusSchema>;
+
+export const CANCEL_REASONS = [
+  'provider_no_show',
+  'cant_reach_other_party',
+  'problem_solved',
+  'found_other_help',
+  'emergency',
+  'other',
+] as const;
+export type CancelReason = (typeof CANCEL_REASONS)[number];
+
+export const CancelJobSchema = z.object({
+  reason: z.enum(CANCEL_REASONS),
+  note: z.string().trim().max(280).optional(),
+  /**
+   * Driver only: reopen the request to get new offers (e.g. after a no-show) instead of closing it.
+   * Ignored for providers: if a provider cancels, the request always reopens.
+   */
+  reopenRequest: z.boolean().default(false),
+});
+export type CancelJobInput = z.infer<typeof CancelJobSchema>;

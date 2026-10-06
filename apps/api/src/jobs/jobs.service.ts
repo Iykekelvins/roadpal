@@ -8,9 +8,12 @@ import {
 import {
   ACTIVE_JOB_STATUSES,
   checkJobTransition,
+  REQUEST_TTL_MINUTES,
+  type CancelJobInput,
   type JobStatus,
   type JobView,
   type UpdateJobStatusInput,
+  type UserRole,
 } from '@repo/shared';
 import { and, eq, gt, inArray, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
@@ -18,10 +21,12 @@ import type { AuthUser } from '../auth/decorators.js';
 import { isUniqueViolation, retryOnDeadlock } from '../common/db-errors.js';
 import { DB, type Database } from '../db/database.module.js';
 import { jobs, offers, providerProfiles, requests, users } from '../db/schema.js';
+import { dispatchRequest } from '../matching/dispatch-request.js';
 import { ratingAvg } from '../providers/rating.js';
 import { RealtimeGateway } from '../realtime/realtime.gateway.js';
 
 const driverUser = alias(users, 'driver_user');
+const providerUser = alias(users, 'provider_user');
 type JobInsert = typeof jobs.$inferInsert;
 
 /** Which timestamp column records reaching each status. */
@@ -33,7 +38,16 @@ const STATUS_TIMESTAMP: Record<Exclude<JobStatus, 'accepted'>, keyof JobInsert> 
   cancelled: 'cancelledAt',
 };
 
-const providerUser = alias(users, 'provider_user');
+/** Throws the right HTTP error if this role can't move a job between these statuses. */
+function assertTransition(from: JobStatus, to: JobStatus, role: UserRole) {
+  const check = checkJobTransition(from, to, role);
+  if (check.ok) return;
+  const body = { message: `Can't move a job from ${from} to ${to}.`, code: check.reason };
+  throw check.reason === 'NOT_ALLOWED_FOR_ROLE' ? new ForbiddenException(body) : new ConflictException(body);
+}
+
+const jobChanged = () =>
+  new ConflictException({ message: 'This job was just updated. Refresh and try again.', code: 'JOB_CHANGED' });
 
 @Injectable()
 export class JobsService {
@@ -151,11 +165,7 @@ export class JobsService {
         .where(and(eq(jobs.id, jobId), this.participant(user)));
       if (!current) throw new NotFoundException('Job not found');
 
-      const check = checkJobTransition(current.status, to, user.role);
-      if (!check.ok) {
-        const body = { message: `Can't move a job from ${current.status} to ${to}.`, code: check.reason };
-        throw check.reason === 'NOT_ALLOWED_FOR_ROLE' ? new ForbiddenException(body) : new ConflictException(body);
-      }
+      assertTransition(current.status, to, user.role);
 
       // Compare-and-set: only update if the status is still what we just checked against.
       const [updated] = await tx
@@ -163,9 +173,7 @@ export class JobsService {
         .set({ status: to, [STATUS_TIMESTAMP[to]]: new Date() })
         .where(and(eq(jobs.id, jobId), eq(jobs.status, current.status)))
         .returning({ id: jobs.id });
-      if (!updated) {
-        throw new ConflictException({ message: 'This job was just updated. Refresh and try again.', code: 'JOB_CHANGED' });
-      }
+      if (!updated) throw jobChanged();
 
       if (to === 'completed') {
         await tx.update(requests).set({ status: 'resolved' }).where(eq(requests.id, current.requestId));
@@ -175,6 +183,76 @@ export class JobsService {
     const [job] = await this.findViews(eq(jobs.id, jobId));
     this.emitToParticipants(job!, 'job:updated');
     return job!;
+  }
+
+  async cancel(user: AuthUser, jobId: string, input: CancelJobInput) {
+    const outcome = await retryOnDeadlock(() =>
+      this.db.transaction(async (tx) => {
+        const [current] = await tx
+          .select({ status: jobs.status, requestId: jobs.requestId, providerId: jobs.providerId })
+          .from(jobs)
+          .innerJoin(requests, eq(requests.id, jobs.requestId))
+          .where(and(eq(jobs.id, jobId), this.participant(user)));
+        if (!current) throw new NotFoundException('Job not found');
+
+        // Same lock order as acceptOffer: provider first, then the rest. Locking the job's rows
+        // before the provider here could deadlock against an accept involving this provider.
+        await tx
+          .select({ id: providerProfiles.userId })
+          .from(providerProfiles)
+          .where(eq(providerProfiles.userId, current.providerId))
+          .for('update');
+
+        assertTransition(current.status, 'cancelled', user.role);
+
+        const [updated] = await tx
+          .update(jobs)
+          .set({
+            status: 'cancelled',
+            cancelledAt: new Date(),
+            cancelledBy: user.role,
+            cancelReason: input.reason,
+            cancelNote: input.note ?? null,
+          })
+          .where(and(eq(jobs.id, jobId), eq(jobs.status, current.status)))
+          .returning({ id: jobs.id });
+        if (!updated) throw jobChanged();
+
+        // A provider cancelling leaves the driver stranded, so the request always reopens.
+        const reopen = user.role === 'provider' || input.reopenRequest;
+        const [request] = await tx
+          .update(requests)
+          .set(
+            reopen
+              ? { status: 'open', expiresAt: sql`now() + make_interval(mins => ${REQUEST_TTL_MINUTES})` }
+              : { status: 'cancelled' },
+          )
+          .where(eq(requests.id, current.requestId))
+          .returning();
+        // Everyone who already had a job on this request (this cancellation and any earlier ones).
+        const previous = await tx
+          .select({ providerId: jobs.providerId })
+          .from(jobs)
+          .where(eq(jobs.requestId, current.requestId));
+        return { request: request!, previousProviderIds: previous.map((p) => p.providerId), reopen };
+      }),
+    );
+
+    const [job] = await this.findViews(eq(jobs.id, jobId));
+    this.emitToParticipants(job!, 'job:updated');
+
+    // Re-dispatch to everyone nearby except providers who already had a go at this request
+    // (their accepted offer blocks them from offering again anyway).
+    const matchedProviderCount = outcome.reopen
+      ? await dispatchRequest(this.db, this.realtime, outcome.request, outcome.previousProviderIds)
+      : 0;
+
+    const { request } = outcome;
+    return {
+      job: job!,
+      request: { id: request.id, status: request.status, expiresAt: request.expiresAt.toISOString() },
+      matchedProviderCount,
+    };
   }
 
   private emitToParticipants(job: JobView, event: 'job:updated') {
@@ -241,6 +319,8 @@ export class JobsService {
       startedAt: job.startedAt?.toISOString() ?? null,
       completedAt: job.completedAt?.toISOString() ?? null,
       cancelledAt: job.cancelledAt?.toISOString() ?? null,
+      cancelledBy: job.cancelledBy,
+      cancelReason: job.cancelReason,
       driver: rest.driver,
       provider: { ...provider, ratingAvg: ratingAvg(ratingSum, ratingCount), ratingCount },
     }));

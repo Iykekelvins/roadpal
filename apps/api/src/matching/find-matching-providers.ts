@@ -1,5 +1,5 @@
 import { ACTIVE_JOB_STATUSES, type IssueType, type LatLng } from '@repo/shared';
-import { and, eq, inArray, notExists, sql } from 'drizzle-orm';
+import { and, eq, inArray, notExists, notInArray, sql } from 'drizzle-orm';
 import type { DbExecutor } from '../db/database.module.js';
 import { toEwkt } from '../db/geography.js';
 import { jobs, providerProfiles } from '../db/schema.js';
@@ -14,6 +14,8 @@ export interface MatchCriteria {
   searchRadiusKm: number;
   /** Check a single provider's eligibility instead of listing all matches. */
   providerId?: string;
+  /** Providers to leave out, e.g. the one who just cancelled this request's job. */
+  excludeProviderIds?: string[];
 }
 
 export interface ProviderMatch {
@@ -24,7 +26,7 @@ export interface ProviderMatch {
 /** Online, recently-seen, not-busy providers who handle this issue and are in range, nearest first. */
 export async function findMatchingProviders(
   db: DbExecutor,
-  { location, issueType, searchRadiusKm, providerId }: MatchCriteria,
+  { location, issueType, searchRadiusKm, providerId, excludeProviderIds = [] }: MatchCriteria,
 ): Promise<ProviderMatch[]> {
   const point = sql`${toEwkt(location)}::geography`;
   const distance = sql<number>`ST_Distance(${providerProfiles.lastLocation}, ${point})`;
@@ -35,6 +37,7 @@ export async function findMatchingProviders(
     .where(
       and(
         providerId ? eq(providerProfiles.userId, providerId) : undefined,
+        excludeProviderIds.length ? notInArray(providerProfiles.userId, excludeProviderIds) : undefined,
         eq(providerProfiles.isOnline, true),
         sql`${providerProfiles.lastLocationAt} > now() - make_interval(secs => ${PROVIDER_LOCATION_FRESH_SECONDS})`,
         sql`${issueType}::issue_type = ANY(${providerProfiles.services})`,
