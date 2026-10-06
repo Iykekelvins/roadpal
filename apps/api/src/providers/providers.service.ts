@@ -1,13 +1,15 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  APP_TIMEZONE,
   MIN_LOCATION_INTERVAL_SECONDS,
+  type EarningsView,
   type LatLng,
   type ProviderProfileInput,
   type ProviderStatusInput,
 } from '@repo/shared';
-import { and, eq, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, eq, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import { DB, type Database } from '../db/database.module.js';
-import { providerProfiles } from '../db/schema.js';
+import { jobs, offers, providerProfiles } from '../db/schema.js';
 import { findNearbyRequests } from '../matching/find-nearby-requests.js';
 import { ratingAvg } from './rating.js';
 
@@ -115,5 +117,27 @@ export class ProvidersService {
       serviceRadiusKm: profile.serviceRadiusKm,
     });
     return { requests: nearby };
+  }
+
+  /** Completed-job totals. Day and week boundaries are Lagos time, not the database's UTC. */
+  async earnings(userId: string): Promise<EarningsView> {
+    // Midnight (or Monday midnight) in Lagos, as an absolute timestamp.
+    const startOf = (unit: 'day' | 'week') =>
+      sql`date_trunc(${unit}, now() at time zone ${APP_TIMEZONE}) at time zone ${APP_TIMEZONE}`;
+    const bucket = (since?: SQL) => {
+      const included = since ? sql`${jobs.completedAt} >= ${since}` : sql`true`;
+      return {
+        jobs: sql<number>`(count(*) filter (where ${included}))::int`,
+        naira: sql<number>`(coalesce(sum(${offers.priceNaira}) filter (where ${included}), 0))::int`,
+      };
+    };
+
+    const [totals] = await this.db
+      .select({ today: bucket(startOf('day')), thisWeek: bucket(startOf('week')), allTime: bucket() })
+      .from(jobs)
+      .innerJoin(offers, eq(offers.id, jobs.offerId))
+      .where(and(eq(jobs.providerId, userId), eq(jobs.status, 'completed')));
+
+    return { timezone: APP_TIMEZONE, ...totals! };
   }
 }

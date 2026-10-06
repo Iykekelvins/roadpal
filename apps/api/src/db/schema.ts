@@ -116,6 +116,7 @@ export const requests = pgTable(
   },
   (t) => [
     index().using('gist', t.location),
+    index().on(t.driverId), // a driver's job history goes through their requests
     // One active request per driver, enforced by the database so concurrent creates can't both succeed.
     uniqueIndex('requests_one_active_per_driver')
       .on(t.driverId)
@@ -182,6 +183,9 @@ export const jobs = pgTable(
   },
   (t) => [
     uniqueIndex('jobs_one_active_per_request').on(t.requestId).where(statusIn(ACTIVE_JOB_STATUSES)),
+    index().on(t.requestId),
+    // Serves the provider's history in keyset order: WHERE provider_id = ? AND (accepted_at, id) < (?, ?).
+    index('jobs_provider_history').on(t.providerId, t.acceptedAt.desc(), t.id.desc()),
     uniqueIndex('jobs_one_active_per_provider').on(t.providerId).where(statusIn(ACTIVE_JOB_STATUSES)),
   ],
 );

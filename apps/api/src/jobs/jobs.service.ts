@@ -10,20 +10,23 @@ import {
   checkJobTransition,
   REQUEST_TTL_MINUTES,
   type CancelJobInput,
+  type HistoryQuery,
+  type JobHistoryPage,
   type JobStatus,
   type JobView,
   type UpdateJobStatusInput,
   type UserRole,
 } from '@repo/shared';
-import { and, eq, gt, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { AuthUser } from '../auth/decorators.js';
 import { isUniqueViolation, retryOnDeadlock } from '../common/db-errors.js';
 import { DB, type Database } from '../db/database.module.js';
-import { jobs, offers, providerProfiles, requests, users } from '../db/schema.js';
+import { jobs, offers, providerProfiles, ratings, requests, users } from '../db/schema.js';
 import { dispatchRequest } from '../matching/dispatch-request.js';
 import { ratingAvg } from '../providers/rating.js';
 import { RealtimeGateway } from '../realtime/realtime.gateway.js';
+import { decodeHistoryCursor, encodeHistoryCursor } from './history-cursor.js';
 
 const driverUser = alias(users, 'driver_user');
 const providerUser = alias(users, 'provider_user');
@@ -274,14 +277,52 @@ export class JobsService {
     return job;
   }
 
+  /** Finished jobs (completed or cancelled), newest first, one page at a time. */
+  async history(user: AuthUser, { cursor, limit }: HistoryQuery): Promise<JobHistoryPage> {
+    const after = cursor ? decodeHistoryCursor(cursor) : null;
+    const rows = await this.findRows(
+      and(
+        this.participant(user),
+        inArray(jobs.status, ['completed', 'cancelled']),
+        // Keyset condition: strictly after the last item of the previous page, compared as a pair.
+        after ? sql`(${jobs.acceptedAt}, ${jobs.id}) < (${after.at}::timestamptz, ${after.id}::uuid)` : undefined,
+      )!,
+      limit + 1, // one extra row tells us whether there is a next page
+    );
+
+    const page = rows.slice(0, limit);
+    const last = page.at(-1);
+    const nextCursor =
+      rows.length > limit && last ? encodeHistoryCursor({ at: last.cursorAt, id: last.view.id }) : null;
+
+    const mine = page.length
+      ? await this.db
+          .select({ jobId: ratings.jobId, score: ratings.score })
+          .from(ratings)
+          .where(and(eq(ratings.fromUserId, user.id), inArray(ratings.jobId, page.map((r) => r.view.id))))
+      : [];
+    const myScore = new Map(mine.map((r) => [r.jobId, r.score]));
+
+    return {
+      items: page.map(({ view }) => ({ job: view, myRating: myScore.get(view.id) ?? null })),
+      nextCursor,
+    };
+  }
+
   private participant(user: AuthUser): SQL {
     return user.role === 'driver' ? eq(requests.driverId, user.id) : eq(jobs.providerId, user.id);
   }
 
   private async findViews(where: SQL): Promise<JobView[]> {
-    const rows = await this.db
+    return (await this.findRows(where)).map((row) => row.view);
+  }
+
+  private async findRows(where: SQL, limit?: number): Promise<{ view: JobView; cursorAt: string }[]> {
+    const query = this.db
       .select({
         job: jobs,
+        // Full-precision timestamp for pagination cursors (see history-cursor.ts).
+        cursorAt: sql<string>`${jobs.acceptedAt}::text`,
         priceNaira: offers.priceNaira,
         etaMinutes: offers.etaMinutes,
         location: requests.location,
@@ -302,9 +343,14 @@ export class JobsService {
       .innerJoin(providerUser, eq(providerUser.id, jobs.providerId))
       .innerJoin(providerProfiles, eq(providerProfiles.userId, jobs.providerId))
       .where(where)
-      .orderBy(sql`${jobs.acceptedAt} desc`);
+      // id breaks ties so the order (and therefore page boundaries) is always the same.
+      .orderBy(desc(jobs.acceptedAt), desc(jobs.id))
+      .$dynamic();
+    const rows = await (limit ? query.limit(limit) : query);
 
-    return rows.map(({ job, ratingSum, ratingCount, provider, providerLocation, providerLocationAt, ...rest }) => ({
+    return rows.map(({ job, cursorAt, ratingSum, ratingCount, provider, providerLocation, providerLocationAt, ...rest }) => ({
+      cursorAt,
+      view: {
       id: job.id,
       status: job.status,
       requestId: job.requestId,
@@ -330,6 +376,7 @@ export class JobsService {
         job.status === 'en_route' && providerLocation && providerLocationAt
           ? { location: providerLocation, at: providerLocationAt.toISOString() }
           : null,
+      },
     }));
   }
 }

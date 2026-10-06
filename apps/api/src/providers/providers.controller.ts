@@ -27,6 +27,11 @@ export class ProvidersController {
     return this.providers.nearbyRequests(user.id);
   }
 
+  @Get('me/earnings')
+  earnings(@CurrentUser() user: AuthUser) {
+    return this.providers.earnings(user.id);
+  }
+
   @Put('me/profile')
   upsertProfile(
     @CurrentUser() user: AuthUser,

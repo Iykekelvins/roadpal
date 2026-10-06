@@ -71,6 +71,13 @@
       "when": 1791299613340,
       "tag": "0009_create_ratings",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791300279519,
+      "tag": "0010_history_indexes",
+      "breakpoints": true
     }
   ]
 }

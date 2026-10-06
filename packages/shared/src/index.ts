@@ -9,3 +9,4 @@ export * from './offers';
 export * from './jobs';
 export * from './job-state-machine';
 export * from './ratings';
+export * from './history';

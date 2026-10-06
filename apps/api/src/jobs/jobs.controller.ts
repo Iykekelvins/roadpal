@@ -1,8 +1,10 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import {
   CancelJobSchema,
+  HistoryQuerySchema,
   UpdateJobStatusSchema,
   type CancelJobInput,
+  type HistoryQuery,
   type UpdateJobStatusInput,
 } from '@repo/shared';
 import { CurrentUser, Roles, type AuthUser } from '../auth/decorators.js';
@@ -24,6 +26,12 @@ export class JobsController {
   @Get('jobs/active')
   active(@CurrentUser() user: AuthUser) {
     return this.jobs.findActive(user);
+  }
+
+  // Declared before jobs/:id: routes match in order, and "history" would otherwise hit the :id route.
+  @Get('jobs/history')
+  history(@CurrentUser() user: AuthUser, @Query(new ZodValidationPipe(HistoryQuerySchema)) query: HistoryQuery) {
+    return this.jobs.history(user, query);
   }
 
   @Get('jobs/:id')
