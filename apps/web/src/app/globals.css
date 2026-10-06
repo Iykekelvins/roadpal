@@ -1,6 +1,19 @@
 @import "tailwindcss";
 
 /*
+ * Tailwind v4 resets buttons to cursor: default (the native OS look). On the web people expect a
+ * pointer on anything clickable. In the base layer, so utilities like cursor-not-allowed still win.
+ */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  summary,
+  label:has(> input[type="radio"], > input[type="checkbox"]) {
+    cursor: pointer;
+  }
+}
+
+/*
  * Design tokens. Components use the names (bg-primary, text-muted), never hex codes, so the
  * light/dark switch and any future palette change happen here only.
  * "on-x" is the text colour that sits on an "x" background with enough contrast.
