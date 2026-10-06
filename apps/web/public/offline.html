@@ -1,0 +1,52 @@
+<!doctype html>
+<!--
+  Shown by the service worker (public/sw.js) when a page can't load. Deliberately one
+  self-contained file: inline styles, no app JavaScript, so it renders with zero network.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>You’re offline – RoadPal</title>
+    <style>
+      :root {
+        --ground: #f5f7f6; --text: #0f1a14; --muted: #4b5a52; --primary: #0b6b43; --on-primary: #ffffff;
+        color-scheme: light dark;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root { --ground: #0d1210; --text: #eef3f0; --muted: #a3b1a9; --primary: #3ccb8e; --on-primary: #04231a; }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; min-height: 100vh; background: var(--ground); color: var(--text);
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; line-height: 1.5;
+      }
+      main { max-width: 28rem; margin: 0 auto; padding: 3rem 1rem; display: flex; flex-direction: column; gap: 2rem; }
+      .logo { display: flex; align-items: center; gap: 0.625rem; font-size: 1.25rem; font-weight: 800; letter-spacing: -0.01em; }
+      .mark { display: flex; width: 2.5rem; height: 2.5rem; align-items: center; justify-content: center; border-radius: 0.75rem; background: var(--primary); color: var(--on-primary); }
+      h1 { margin: 0 0 0.75rem; font-size: 1.875rem; font-weight: 800; letter-spacing: -0.02em; }
+      p { margin: 0 0 0.75rem; color: var(--muted); }
+      button {
+        height: 3.5rem; width: 100%; border: 0; border-radius: 1rem; background: var(--primary); color: var(--on-primary);
+        font: inherit; font-size: 1.125rem; font-weight: 800; cursor: pointer;
+      }
+      button:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="logo">
+        <span class="mark" aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3v6M12 15v6M3 12h6M15 12h6"/></svg>
+        </span>
+        RoadPal
+      </div>
+      <div>
+        <h1>You’re offline</h1>
+        <p>RoadPal needs a connection to find vulcanizers and show live updates. Move to a spot with better signal, then try again.</p>
+        <p>If you’re stranded and it’s urgent, a phone call works on a weaker signal than data.</p>
+      </div>
+      <button type="button" onclick="location.reload()">Try again</button>
+    </main>
+  </body>
+</html>

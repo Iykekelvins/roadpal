@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
+import { ServiceWorker } from "@/components/service-worker";
 import "./globals.css";
 
 // Self-hosted at build time (no request to Google at runtime). `subsets` only controls what is
@@ -18,6 +19,8 @@ export const metadata: Metadata = {
     template: "%s – RoadPal",
   },
   description: "Get a vulcanizer to your car, fast. Offers from nearby providers, live tracking, cash on completion.",
+  // iOS reads these instead of the manifest when installing to the home screen.
+  appleWebApp: { capable: true, title: "RoadPal", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {
@@ -33,7 +36,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${jakarta.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col font-sans">{children}</body>
+      <body className="min-h-full flex flex-col font-sans">
+        {children}
+        <ServiceWorker />
+      </body>
     </html>
   );
 }

@@ -10,6 +10,29 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [{ source: "/api/:path*", destination: `${API_URL}/:path*` }];
   },
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" }, // no guessing file types
+          { key: "X-Frame-Options", value: "DENY" }, // can't be embedded in someone else's page (clickjacking)
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          // Location only for RoadPal itself; nothing here needs the camera or microphone.
+          { key: "Permissions-Policy", value: "geolocation=(self), camera=(), microphone=()" },
+        ],
+      },
+      {
+        // Always fetch the newest service worker, so a fix reaches everyone on their next visit.
+        source: "/sw.js",
+        headers: [
+          { key: "Content-Type", value: "application/javascript; charset=utf-8" },
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+          { key: "Content-Security-Policy", value: "default-src 'self'; script-src 'self'" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
