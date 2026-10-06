@@ -13,7 +13,6 @@ import type { RealtimeGateway } from '../src/realtime/realtime.gateway.js';
 // Concurrency tests: races need separate transactions on separate connections, so these run the
 // real services against the real database (no wrapping transaction) and clean up afterwards.
 
-process.loadEnvFile('.env');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 10 });
 const db: Database = drizzle({ client: pool, schema, casing: 'snake_case' });
 

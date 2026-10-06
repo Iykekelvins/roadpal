@@ -6,7 +6,6 @@ import { recordLiveLocation } from '../src/realtime/record-live-location.js';
 
 // Rolled-back integration tests for the live location rules (store, throttle, relay target).
 
-process.loadEnvFile('.env');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const db: Database = drizzle({ client: pool, schema, casing: 'snake_case' });
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];

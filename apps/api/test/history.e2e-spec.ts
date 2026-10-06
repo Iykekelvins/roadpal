@@ -12,7 +12,6 @@ import type { RealtimeGateway } from '../src/realtime/realtime.gateway.js';
 // History pagination and earnings against the real database. Fixtures use their own phone prefix
 // and are deleted afterwards (cascades remove their requests, offers, jobs and ratings).
 
-process.loadEnvFile('.env');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 4 });
 const db: Database = drizzle({ client: pool, schema, casing: 'snake_case' });
 const realtime = { emitToUser: () => undefined } as unknown as RealtimeGateway;

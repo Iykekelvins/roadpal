@@ -8,7 +8,6 @@ import { findNearbyRequests } from '../src/matching/find-nearby-requests.js';
 // Integration test: the matching rules live in SQL, so they're tested against real Postgres + PostGIS.
 // Everything runs in a transaction that is rolled back, so the database is left untouched.
 
-process.loadEnvFile('.env');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const db: Database = drizzle({ client: pool, schema, casing: 'snake_case' });
 

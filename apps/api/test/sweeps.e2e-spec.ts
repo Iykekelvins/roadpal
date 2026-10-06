@@ -8,7 +8,6 @@ import { expireRequests, expireStaleOffers } from '../src/sweeps/expire.js';
 // Sweeps against the real database. Fixtures use their own phone prefix and are deleted afterwards.
 // Sweeps may also touch real dev rows that are genuinely due, so assertions only look at fixture ids.
 
-process.loadEnvFile('.env');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 4 });
 const db: Database = drizzle({ client: pool, schema, casing: 'snake_case' });
 
