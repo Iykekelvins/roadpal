@@ -4,6 +4,7 @@
 // view (e.g. GET /providers/me/nearby-requests) and de-duplicate by id.
 
 import type { IssueType, VehicleType } from './enums';
+import type { LatLng } from './geo';
 import type { JobView } from './jobs';
 import type { OfferView } from './offers';
 
@@ -34,10 +35,18 @@ export interface ServerToClientEvents {
   'offer:withdrawn': (payload: { offerId: string; requestId: string }) => void;
   /** To both participants: the job's status changed. */
   'job:updated': (job: JobView) => void;
+  /** To the driver while their job is en route: the provider's latest position. */
+  'job:location': (payload: { jobId: string; location: LatLng; at: string }) => void;
 }
 
-/** Events clients send to the server (none yet: client actions go over REST). */
-export type ClientToServerEvents = Record<string, never>;
+/** The server's reply (Socket.IO acknowledgement) to a live location update. */
+export type LocationAck = { accepted: boolean } | { error: 'INVALID_LOCATION' | 'NOT_ALLOWED' | 'SERVER_ERROR' };
+
+/** Events clients send to the server. Actions still go over REST; only high-frequency data comes this way. */
+export interface ClientToServerEvents {
+  /** Provider's position, sent every EN_ROUTE_LOCATION_INTERVAL_SECONDS while on a job. */
+  'location:update': (location: LatLng, ack: (result: LocationAck) => void) => void;
+}
 
 /** Error message sent with connect_error when the handshake token is missing or invalid. */
 export const SOCKET_UNAUTHORIZED = 'UNAUTHORIZED';

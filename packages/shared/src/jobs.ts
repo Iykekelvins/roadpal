@@ -28,4 +28,6 @@ export interface JobView {
   cancelReason: CancelReason | null;
   driver: { id: string; name: string | null; phone: string };
   provider: { id: string; name: string | null; phone: string; ratingAvg: number | null; ratingCount: number };
+  /** Provider's last known position, only while en route. Lets the map restore after a reconnect. */
+  providerLocation: { location: LatLng; at: string } | null;
 }

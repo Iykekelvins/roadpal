@@ -292,6 +292,8 @@ export class JobsService {
         provider: { id: providerUser.id, name: providerUser.name, phone: providerUser.phone },
         ratingSum: providerProfiles.ratingSum,
         ratingCount: providerProfiles.ratingCount,
+        providerLocation: providerProfiles.lastLocation,
+        providerLocationAt: providerProfiles.lastLocationAt,
       })
       .from(jobs)
       .innerJoin(offers, eq(offers.id, jobs.offerId))
@@ -302,7 +304,7 @@ export class JobsService {
       .where(where)
       .orderBy(sql`${jobs.acceptedAt} desc`);
 
-    return rows.map(({ job, ratingSum, ratingCount, provider, ...rest }) => ({
+    return rows.map(({ job, ratingSum, ratingCount, provider, providerLocation, providerLocationAt, ...rest }) => ({
       id: job.id,
       status: job.status,
       requestId: job.requestId,
@@ -323,6 +325,11 @@ export class JobsService {
       cancelReason: job.cancelReason,
       driver: rest.driver,
       provider: { ...provider, ratingAvg: ratingAvg(ratingSum, ratingCount), ratingCount },
+      // Only shared while the provider is on the way; not before acceptance or after arrival.
+      providerLocation:
+        job.status === 'en_route' && providerLocation && providerLocationAt
+          ? { location: providerLocation, at: providerLocationAt.toISOString() }
+          : null,
     }));
   }
 }

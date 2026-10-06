@@ -7,6 +7,10 @@ export const MAX_SERVICE_RADIUS_KM = 50;
 export const IDLE_LOCATION_INTERVAL_SECONDS = 30;
 /** The server ignores location updates closer together than this. */
 export const MIN_LOCATION_INTERVAL_SECONDS = 10;
+/** How often the provider's app sends its location while en route to a job (over the socket). */
+export const EN_ROUTE_LOCATION_INTERVAL_SECONDS = 5;
+/** The server ignores live (socket) location updates closer together than this. */
+export const MIN_LIVE_LOCATION_INTERVAL_SECONDS = 4;
 
 export const ProviderProfileSchema = z.object({
   services: z

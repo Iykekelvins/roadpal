@@ -1,20 +1,27 @@
-import { Logger } from '@nestjs/common';
+import { Inject, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import {
+  ConnectedSocket,
+  MessageBody,
   OnGatewayConnection,
   OnGatewayDisconnect,
   OnGatewayInit,
+  SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
 import {
+  LatLngSchema,
   SOCKET_UNAUTHORIZED,
   type ClientToServerEvents,
+  type LocationAck,
   type ServerToClientEvents,
 } from '@repo/shared';
 import type { Server, Socket } from 'socket.io';
 import type { AccessTokenPayload } from '../auth/access-token.js';
 import type { AuthUser } from '../auth/decorators.js';
+import { DB, type Database } from '../db/database.module.js';
+import { recordLiveLocation } from './record-live-location.js';
 
 interface SocketData {
   user: AuthUser;
@@ -33,7 +40,10 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
   @WebSocketServer() private readonly server!: AppServer;
 
-  constructor(private readonly jwt: JwtService) {}
+  constructor(
+    private readonly jwt: JwtService,
+    @Inject(DB) private readonly db: Database,
+  ) {}
 
   afterInit(server: AppServer) {
     // Authenticate during the handshake: a bad token never becomes a connection.
@@ -63,6 +73,32 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
   handleDisconnect(socket: AppSocket) {
     clearTimeout(socket.data.expiryTimer);
+  }
+
+  /**
+   * A provider's live position. The return value is sent back as the Socket.IO acknowledgement.
+   * Stored (latest only, throttled) and relayed to the driver if the provider has an en-route job.
+   */
+  @SubscribeMessage('location:update')
+  async onLocationUpdate(@ConnectedSocket() socket: AppSocket, @MessageBody() body: unknown): Promise<LocationAck> {
+    if (socket.data.user.role !== 'provider') return { error: 'NOT_ALLOWED' };
+    const parsed = LatLngSchema.safeParse(body);
+    if (!parsed.success) return { error: 'INVALID_LOCATION' };
+
+    try {
+      const result = await recordLiveLocation(this.db, socket.data.user.id, parsed.data);
+      if (result.accepted && result.enRouteJob) {
+        this.emitToUser(result.enRouteJob.driverId, 'job:location', {
+          jobId: result.enRouteJob.id,
+          location: parsed.data,
+          at: result.at.toISOString(),
+        });
+      }
+      return { accepted: result.accepted };
+    } catch (error) {
+      this.logger.error('location:update failed', error as Error);
+      return { error: 'SERVER_ERROR' };
+    }
   }
 
   /** Push an event to every connected device of a user. A no-op if they're offline. */
