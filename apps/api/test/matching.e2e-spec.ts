@@ -140,7 +140,19 @@ describe('findNearbyRequests', () => {
         .returning({ id: schema.requests.id });
       const nameOf = Object.fromEntries(names.map((name, i) => [created[i]!.id, name]));
 
+      // This provider already offered on "farther": the feed should say so.
+      const [provider] = await tx
+        .insert(schema.users)
+        .values({ phone: '+2347000199999', role: 'provider' })
+        .returning({ id: schema.users.id });
+      const fartherId = created[names.indexOf('farther')]!.id;
+      const [myOffer] = await tx
+        .insert(schema.offers)
+        .values({ requestId: fartherId, providerId: provider!.id, priceNaira: 3500, etaMinutes: 12, distanceMeters: 8000 })
+        .returning({ id: schema.offers.id });
+
       const nearby = await findNearbyRequests(tx, {
+        providerId: provider!.id,
         location: SAGAMU,
         services: ['flat_tyre', 'puncture'],
         serviceRadiusKm: 10,
@@ -150,6 +162,8 @@ describe('findNearbyRequests', () => {
       expect(ours.map((r) => nameOf[r.id])).toEqual(['near', 'farther']);
       // Exact coordinates are not exposed before an offer is accepted.
       expect(ours[0]).not.toHaveProperty('location');
+      expect(ours[0]!.myOffer).toBeNull();
+      expect(ours[1]!.myOffer).toEqual({ id: myOffer!.id, priceNaira: 3500, etaMinutes: 12, status: 'pending' });
     });
   });
 });

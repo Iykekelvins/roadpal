@@ -14,7 +14,7 @@ import { useNow } from "@/lib/use-seconds-left";
 import { useSocketEvent } from "../../_components/session";
 
 // The map library is big and browser-only: load it just for this screen, never on the server.
-const JobMap = dynamic(() => import("./job-map"), {
+const JobMap = dynamic(() => import("../../_components/job-map"), {
   ssr: false,
   loading: () => <div className="h-72 animate-pulse rounded-2xl bg-neutral-soft sm:h-80" />,
 });

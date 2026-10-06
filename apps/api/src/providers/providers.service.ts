@@ -122,6 +122,7 @@ export class ProvidersService {
       throw new ConflictException('Go online to see nearby requests');
     }
     const nearby = await findNearbyRequests(this.db, {
+      providerId: userId,
       location: profile.lastLocation,
       services: profile.services,
       serviceRadiusKm: profile.serviceRadiusKm,

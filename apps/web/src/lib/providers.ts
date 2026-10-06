@@ -1,4 +1,4 @@
-import type { EarningsView, IssueType, LatLng, ProviderProfileInput } from "@repo/shared";
+import type { CreateOfferInput, EarningsView, IssueType, LatLng, NearbyRequest, OfferView, ProviderProfileInput } from "@repo/shared";
 import { api, ApiError } from "./api";
 
 export interface ProviderProfile {
@@ -43,4 +43,12 @@ export function sendLocation(location: LatLng) {
 
 export function getEarnings() {
   return api<EarningsView>("/providers/me/earnings");
+}
+
+export async function getNearbyRequests() {
+  return (await api<{ requests: NearbyRequest[] }>("/providers/me/nearby-requests")).requests;
+}
+
+export function makeOffer(requestId: string, input: CreateOfferInput) {
+  return api<OfferView>(`/requests/${requestId}/offers`, { method: "POST", body: JSON.stringify(input) });
 }

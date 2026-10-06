@@ -3,7 +3,7 @@
 // Delivery rule: pushes only reach connected clients. On every (re)connect, clients refetch the REST
 // view (e.g. GET /providers/me/nearby-requests) and de-duplicate by id.
 
-import type { IssueType, VehicleType } from './enums';
+import type { IssueType, OfferStatus, VehicleType } from './enums';
 import type { LatLng } from './geo';
 import type { JobView } from './jobs';
 import type { OfferView } from './offers';
@@ -17,6 +17,8 @@ export interface NearbyRequest {
   distanceMeters: number;
   createdAt: string; // ISO 8601
   expiresAt: string; // ISO 8601
+  /** This provider's own offer on the request, if they made one (so the app can restore it). */
+  myOffer: { id: string; priceNaira: number; etaMinutes: number; status: OfferStatus } | null;
 }
 
 /** Events the server pushes to clients. */

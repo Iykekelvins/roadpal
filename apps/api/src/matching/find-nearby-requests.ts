@@ -2,7 +2,7 @@ import type { IssueType, LatLng, NearbyRequest } from '@repo/shared';
 import { and, eq, gt, sql } from 'drizzle-orm';
 import type { DbExecutor } from '../db/database.module.js';
 import { toEwkt } from '../db/geography.js';
-import { requests } from '../db/schema.js';
+import { offers, requests } from '../db/schema.js';
 
 type RequestRow = typeof requests.$inferSelect;
 
@@ -12,6 +12,7 @@ const MAX_RESULTS = 20;
 export function toNearbyRequest(
   row: Pick<RequestRow, 'id' | 'vehicleType' | 'issueType' | 'note' | 'createdAt' | 'expiresAt'>,
   distanceMeters: number,
+  myOffer: NearbyRequest['myOffer'] = null,
 ): NearbyRequest {
   return {
     id: row.id,
@@ -21,10 +22,12 @@ export function toNearbyRequest(
     distanceMeters: Math.round(distanceMeters),
     createdAt: row.createdAt.toISOString(),
     expiresAt: row.expiresAt.toISOString(),
+    myOffer,
   };
 }
 
 export interface ProviderCriteria {
+  providerId: string;
   location: LatLng;
   services: IssueType[];
   serviceRadiusKm: number;
@@ -36,7 +39,7 @@ export interface ProviderCriteria {
  */
 export async function findNearbyRequests(
   db: DbExecutor,
-  { location, services, serviceRadiusKm }: ProviderCriteria,
+  { providerId, location, services, serviceRadiusKm }: ProviderCriteria,
 ): Promise<NearbyRequest[]> {
   const point = sql`${toEwkt(location)}::geography`;
   const distance = sql<number>`ST_Distance(${requests.location}, ${point})`;
@@ -50,8 +53,14 @@ export async function findNearbyRequests(
       distanceMeters: distance,
       createdAt: requests.createdAt,
       expiresAt: requests.expiresAt,
+      offerId: offers.id,
+      offerPrice: offers.priceNaira,
+      offerEta: offers.etaMinutes,
+      offerStatus: offers.status,
     })
     .from(requests)
+    // This provider's own offer, if any (at most one per request, by a unique index).
+    .leftJoin(offers, and(eq(offers.requestId, requests.id), eq(offers.providerId, providerId)))
     .where(
       and(
         eq(requests.status, 'open'),
@@ -67,5 +76,13 @@ export async function findNearbyRequests(
     .orderBy(distance)
     .limit(MAX_RESULTS);
 
-  return rows.map((row) => toNearbyRequest(row, Number(row.distanceMeters)));
+  return rows.map((row) =>
+    toNearbyRequest(
+      row,
+      Number(row.distanceMeters),
+      row.offerId
+        ? { id: row.offerId, priceNaira: row.offerPrice!, etaMinutes: row.offerEta!, status: row.offerStatus! }
+        : null,
+    ),
+  );
 }

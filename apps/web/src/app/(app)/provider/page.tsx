@@ -1,18 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { EarningsView } from "@repo/shared";
+import type { EarningsView, JobView } from "@repo/shared";
 import { Star } from "lucide-react";
 import { buttonStyles } from "@/components/button-styles";
 import { ApiError, NetworkError } from "@/lib/api";
 import { formatNaira } from "@/lib/format";
 import { locate } from "@/lib/geolocation";
 import { ISSUE_LABELS } from "@/lib/labels";
+import { getActiveJob } from "@/lib/jobs";
 import { getEarnings, getProfile, goOffline, goOnline, type ProviderProfile } from "@/lib/providers";
 import { useNow } from "@/lib/use-seconds-left";
 import { useSession, useSocketEvent } from "../_components/session";
 import { useLocationHeartbeat, useWakeLock } from "./_components/presence";
+import { IncomingRequests } from "./_components/incoming-requests";
 import { ProfileForm } from "./_components/profile-form";
+import { ProviderJob } from "./_components/provider-job";
 
 const messageOf = (error: unknown) =>
   error instanceof ApiError || error instanceof NetworkError ? error.message : "Something went wrong. Try again.";
@@ -23,6 +26,9 @@ export default function ProviderHomePage() {
   const [loadFailed, setLoadFailed] = useState(false);
   const [editing, setEditing] = useState(false);
   const [earnings, setEarnings] = useState<EarningsView | null>(null);
+  // An active job takes over the screen. Kept after it ends, until "Back to requests".
+  const [job, setJob] = useState<JobView | null>(null);
+  const [earningsVersion, setEarningsVersion] = useState(0);
 
   // Server truth on load and after every reconnect (the sweep may have set us offline meanwhile).
   useEffect(() => {
@@ -35,11 +41,27 @@ export default function ProviderHomePage() {
       },
       () => !ignore && setLoadFailed(true),
     );
-    getEarnings().then((e) => !ignore && setEarnings(e), () => {});
+    getActiveJob().then(
+      (active) => {
+        if (ignore) return;
+        // No active job on the server: drop a stale one (e.g. the driver cancelled while we were
+        // offline), but keep a finished one on screen until "Back to requests".
+        setJob((current) => active ?? (current && !["completed", "cancelled"].includes(current.status) ? null : current));
+      },
+      () => {},
+    );
     return () => {
       ignore = true;
     };
   }, [connection]);
+
+  useEffect(() => {
+    let ignore = false;
+    getEarnings().then((e) => !ignore && setEarnings(e), () => {});
+    return () => {
+      ignore = true;
+    };
+  }, [connection, earningsVersion]);
 
   let screen: React.ReactNode;
   if (profile === undefined) {
@@ -55,6 +77,17 @@ export default function ProviderHomePage() {
         onCancel={profile ? () => setEditing(false) : undefined}
       />
     );
+  } else if (job) {
+    screen = (
+      <ProviderJob
+        job={job}
+        onChange={setJob}
+        onClose={() => {
+          setJob(null);
+          setEarningsVersion((n) => n + 1); // a completed job just changed today's total
+        }}
+      />
+    );
   } else {
     screen = (
       <div className="flex flex-col gap-6">
@@ -63,6 +96,7 @@ export default function ProviderHomePage() {
           <h1 className="text-3xl font-extrabold tracking-tight">{profile.isOnline ? "You’re online" : "You’re offline"}</h1>
         </div>
         <OnlinePanel profile={profile} onChange={setProfile} />
+        {profile.isOnline && <IncomingRequests onAccepted={setJob} />}
         {earnings && <EarningsCard earnings={earnings} />}
         <ProfileSummary profile={profile} onEdit={() => setEditing(true)} />
       </div>

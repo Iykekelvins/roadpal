@@ -38,7 +38,16 @@ function pin(kind: "driver" | "provider") {
  * The driver's pin and, while en route, the vulcanizer moving towards it. Positions arrive every
  * few seconds, so the marker glides between them instead of jumping.
  */
-export default function JobMap({ driver, provider }: { driver: LatLng; provider: LatLng | null }) {
+export default function JobMap({
+  driver,
+  provider,
+  label = provider ? "Map of you and your vulcanizer" : "Map of your location",
+}: {
+  driver: LatLng;
+  provider: LatLng | null;
+  /** Screen-reader description; each side words it from their own point of view. */
+  label?: string;
+}) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibre | null>(null);
   const providerMarker = useRef<Marker | null>(null);
@@ -118,7 +127,7 @@ export default function JobMap({ driver, provider }: { driver: LatLng; provider:
     <div className="relative h-72 overflow-hidden rounded-2xl border border-border sm:h-80">
       {/* Sized with h-full, not absolute: MapLibre's own CSS sets position: relative on this element,
           and un-layered library CSS beats Tailwind's layered utilities. */}
-      <div ref={container} className="h-full w-full" role="img" aria-label={provider ? "Map of you and your vulcanizer" : "Map of your location"} />
+      <div ref={container} className="h-full w-full" role="img" aria-label={label} />
       {!followed && (
         <button
           type="button"

@@ -1,4 +1,4 @@
-import type { CancelJobInput, JobView, RateJobInput, RatingView } from "@repo/shared";
+import type { CancelJobInput, JobView, RateJobInput, RatingView, UpdateJobStatusInput } from "@repo/shared";
 import { api } from "./api";
 
 export async function getActiveJob() {
@@ -16,4 +16,9 @@ export function cancelJob(id: string, input: CancelJobInput) {
 
 export function rateJob(id: string, input: RateJobInput) {
   return api<RatingView>(`/jobs/${id}/rating`, { method: "POST", body: JSON.stringify(input) });
+}
+
+/** Vulcanizer only: move the job forward (en_route -> arrived -> in_progress -> completed). */
+export function updateJobStatus(id: string, status: UpdateJobStatusInput["status"]) {
+  return api<JobView>(`/jobs/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) });
 }
