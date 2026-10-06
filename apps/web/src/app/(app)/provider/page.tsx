@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import type { EarningsView, JobView } from "@repo/shared";
 import { Star } from "lucide-react";
 import { buttonStyles } from "@/components/button-styles";
@@ -106,9 +107,14 @@ export default function ProviderHomePage() {
   return (
     <div className="flex flex-col gap-10">
       <div>{screen}</div>
-      <button type="button" onClick={signOut} className="self-center text-sm font-bold text-muted underline-offset-4 hover:text-text hover:underline">
-        Log out
-      </button>
+      <nav aria-label="Account" className="flex items-center justify-center gap-6 text-sm font-bold text-muted">
+        <Link href="/provider/history" className="underline-offset-4 hover:text-text hover:underline">
+          Past jobs
+        </Link>
+        <button type="button" onClick={signOut} className="underline-offset-4 hover:text-text hover:underline">
+          Log out
+        </button>
+      </nav>
     </div>
   );
 }

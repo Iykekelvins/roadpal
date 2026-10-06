@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import type { JobView } from "@repo/shared";
 import { getActiveJob, rateJob } from "@/lib/jobs";
 import { getActiveRequest, type DriverRequest } from "@/lib/requests";
@@ -137,9 +138,14 @@ export default function DriverHomePage() {
   return (
     <div className="flex flex-col gap-10">
       <div>{screen}</div>
-      <button type="button" onClick={signOut} className="self-center text-sm font-bold text-muted underline-offset-4 hover:text-text hover:underline">
-        Log out
-      </button>
+      <nav aria-label="Account" className="flex items-center justify-center gap-6 text-sm font-bold text-muted">
+        <Link href="/driver/history" className="underline-offset-4 hover:text-text hover:underline">
+          Past jobs
+        </Link>
+        <button type="button" onClick={signOut} className="underline-offset-4 hover:text-text hover:underline">
+          Log out
+        </button>
+      </nav>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import type { CancelJobInput, JobView, RateJobInput, RatingView, UpdateJobStatusInput } from "@repo/shared";
+import type { CancelJobInput, JobHistoryPage, JobView, RateJobInput, RatingView, UpdateJobStatusInput } from "@repo/shared";
 import { api } from "./api";
 
 export async function getActiveJob() {
@@ -21,4 +21,10 @@ export function rateJob(id: string, input: RateJobInput) {
 /** Vulcanizer only: move the job forward (en_route -> arrived -> in_progress -> completed). */
 export function updateJobStatus(id: string, status: UpdateJobStatusInput["status"]) {
   return api<JobView>(`/jobs/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) });
+}
+
+/** Finished jobs (completed or cancelled), newest first. Pass the previous page's nextCursor for more. */
+export function getHistory(cursor?: string) {
+  const query = new URLSearchParams({ limit: "20", ...(cursor && { cursor }) });
+  return api<JobHistoryPage>(`/jobs/history?${query}`);
 }

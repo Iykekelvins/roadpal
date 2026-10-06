@@ -12,6 +12,7 @@ import { cancelJob } from "@/lib/jobs";
 import { ISSUE_LABELS } from "@/lib/labels";
 import { useNow } from "@/lib/use-seconds-left";
 import { useSocketEvent } from "../../_components/session";
+import { StarPicker } from "../../_components/star-picker";
 
 // The map library is big and browser-only: load it just for this screen, never on the server.
 const JobMap = dynamic(() => import("../../_components/job-map"), {
@@ -249,19 +250,7 @@ export function JobDone({ job, onSubmit, onSkip }: { job: JobView; onSubmit: (sc
 
       <fieldset className="flex flex-col items-center gap-3">
         <legend className="mb-3 w-full text-center font-extrabold">How did {job.provider.name ?? "they"} do?</legend>
-        <div className="flex gap-1">
-          {[1, 2, 3, 4, 5].map((n) => (
-            <label key={n} className="rounded-lg p-1 has-focus-visible:outline-3 has-focus-visible:outline-primary">
-              <input type="radio" name="score" value={n} checked={score === n} onChange={() => setScore(n)} className="sr-only" />
-              <span className="sr-only">{n} star{n > 1 ? "s" : ""}</span>
-              <Star
-                className={`size-10 transition-colors ${n <= score ? "fill-signal text-signal" : "text-border"}`}
-                strokeWidth={1.5}
-                aria-hidden="true"
-              />
-            </label>
-          ))}
-        </div>
+        <StarPicker name="score" value={score} onChange={setScore} />
       </fieldset>
 
       <textarea
