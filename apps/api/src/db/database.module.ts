@@ -10,6 +10,8 @@ export const DB = Symbol('DB');
 const PG_POOL = Symbol('PG_POOL');
 
 export type Database = NodePgDatabase<typeof schema>;
+/** Either the database or an open transaction, for code that should work inside both. */
+export type DbExecutor = Database | Parameters<Parameters<Database['transaction']>[0]>[0];
 
 @Global()
 @Module({

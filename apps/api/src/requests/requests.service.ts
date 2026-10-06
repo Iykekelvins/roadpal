@@ -4,6 +4,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { isUniqueViolation } from '../common/db-errors.js';
 import { DB, type Database } from '../db/database.module.js';
 import { requests } from '../db/schema.js';
+import { findMatchingProviders } from '../matching/find-matching-providers.js';
 
 @Injectable()
 export class RequestsService {
@@ -19,7 +20,9 @@ export class RequestsService {
           expiresAt: sql`now() + make_interval(mins => ${REQUEST_TTL_MINUTES})`,
         })
         .returning();
-      return request!;
+      // Phase 5 will notify these providers in real time; for now the driver sees how many there are.
+      const matches = await findMatchingProviders(this.db, request!);
+      return { ...request!, matchedProviderCount: matches.length };
     } catch (error) {
       // The partial unique index is the source of truth, so this holds even for simultaneous taps.
       if (isUniqueViolation(error, 'requests_one_active_per_driver')) {
