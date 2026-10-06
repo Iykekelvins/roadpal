@@ -12,6 +12,8 @@ export interface MatchCriteria {
   location: LatLng;
   issueType: IssueType;
   searchRadiusKm: number;
+  /** Check a single provider's eligibility instead of listing all matches. */
+  providerId?: string;
 }
 
 export interface ProviderMatch {
@@ -22,7 +24,7 @@ export interface ProviderMatch {
 /** Online, recently-seen providers who handle this issue and are in range, nearest first. */
 export async function findMatchingProviders(
   db: DbExecutor,
-  { location, issueType, searchRadiusKm }: MatchCriteria,
+  { location, issueType, searchRadiusKm, providerId }: MatchCriteria,
 ): Promise<ProviderMatch[]> {
   const point = sql`${toEwkt(location)}::geography`;
   const distance = sql<number>`ST_Distance(${providerProfiles.lastLocation}, ${point})`;
@@ -32,6 +34,7 @@ export async function findMatchingProviders(
     .from(providerProfiles)
     .where(
       and(
+        providerId ? eq(providerProfiles.userId, providerId) : undefined,
         eq(providerProfiles.isOnline, true),
         sql`${providerProfiles.lastLocationAt} > now() - make_interval(secs => ${PROVIDER_LOCATION_FRESH_SECONDS})`,
         sql`${issueType}::issue_type = ANY(${providerProfiles.services})`,

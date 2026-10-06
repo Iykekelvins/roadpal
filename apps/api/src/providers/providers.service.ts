@@ -9,6 +9,7 @@ import { and, eq, isNull, lt, or, sql } from 'drizzle-orm';
 import { DB, type Database } from '../db/database.module.js';
 import { providerProfiles } from '../db/schema.js';
 import { findNearbyRequests } from '../matching/find-nearby-requests.js';
+import { ratingAvg } from './rating.js';
 
 type ProviderProfileRow = typeof providerProfiles.$inferSelect;
 
@@ -20,7 +21,7 @@ export function toProfileResponse(row: ProviderProfileRow) {
     isOnline: row.isOnline,
     lastLocation: row.lastLocation,
     lastLocationAt: row.lastLocationAt,
-    ratingAvg: row.ratingCount ? Math.round((row.ratingSum / row.ratingCount) * 10) / 10 : null,
+    ratingAvg: ratingAvg(row.ratingSum, row.ratingCount),
     ratingCount: row.ratingCount,
   };
 }

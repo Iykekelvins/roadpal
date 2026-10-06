@@ -4,6 +4,7 @@ import { validateEnv } from './config/env.js';
 import { DatabaseModule } from './db/database.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { HealthModule } from './health/health.module.js';
+import { OffersModule } from './offers/offers.module.js';
 import { ProvidersModule } from './providers/providers.module.js';
 import { RealtimeModule } from './realtime/realtime.module.js';
 import { RequestsModule } from './requests/requests.module.js';
@@ -19,6 +20,7 @@ import { UsersModule } from './users/users.module.js';
     ProvidersModule,
     RequestsModule,
     RealtimeModule,
+    OffersModule,
   ],
 })
 export class AppModule {}

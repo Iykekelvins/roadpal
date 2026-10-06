@@ -24,3 +24,7 @@ export const RequestStatusSchema = z.enum(REQUEST_STATUSES);
 export type RequestStatus = z.infer<typeof RequestStatusSchema>;
 /** A driver can have at most one request in these states. */
 export const ACTIVE_REQUEST_STATUSES = ['open', 'matched'] as const satisfies readonly RequestStatus[];
+
+export const OFFER_STATUSES = ['pending', 'accepted', 'rejected', 'withdrawn', 'expired'] as const;
+export const OfferStatusSchema = z.enum(OFFER_STATUSES);
+export type OfferStatus = z.infer<typeof OfferStatusSchema>;

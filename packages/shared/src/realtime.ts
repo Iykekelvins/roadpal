@@ -4,6 +4,7 @@
 // view (e.g. GET /providers/me/nearby-requests) and de-duplicate by id.
 
 import type { IssueType, VehicleType } from './enums';
+import type { OfferView } from './offers';
 
 /** A request as a provider sees it before acceptance: distance, never the driver's exact location. */
 export interface NearbyRequest {
@@ -22,6 +23,8 @@ export interface ServerToClientEvents {
   'session:expired': () => void;
   /** A new request matched this provider. Same shape as an item in the nearby-requests feed. */
   'request:new': (request: NearbyRequest) => void;
+  /** A provider made an offer on the driver's request. */
+  'offer:new': (offer: OfferView) => void;
 }
 
 /** Events clients send to the server (none yet: client actions go over REST). */

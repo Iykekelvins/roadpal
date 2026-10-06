@@ -2,6 +2,7 @@ import {
   ACTIVE_REQUEST_STATUSES,
   INITIAL_SEARCH_RADIUS_KM,
   ISSUE_TYPES,
+  OFFER_STATUSES,
   REQUEST_STATUSES,
   USER_ROLES,
   VEHICLE_TYPES,
@@ -25,6 +26,7 @@ export const userRole = pgEnum('user_role', USER_ROLES);
 export const issueType = pgEnum('issue_type', ISSUE_TYPES);
 export const vehicleType = pgEnum('vehicle_type', VEHICLE_TYPES);
 export const requestStatus = pgEnum('request_status', REQUEST_STATUSES);
+export const offerStatus = pgEnum('offer_status', OFFER_STATUSES);
 
 export const users = pgTable('users', {
   id: uuid().primaryKey().defaultRandom(),
@@ -110,5 +112,31 @@ export const requests = pgTable(
       .on(t.driverId)
       // Literal values (not query parameters): index definitions live in migration SQL.
       .where(sql.raw(`status in (${ACTIVE_REQUEST_STATUSES.map((s) => `'${s}'`).join(', ')})`)),
+  ],
+);
+
+export const offers = pgTable(
+  'offers',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    requestId: uuid()
+      .notNull()
+      .references(() => requests.id, { onDelete: 'cascade' }),
+    providerId: uuid()
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    priceNaira: integer().notNull(),
+    etaMinutes: integer().notNull(),
+    // Snapshot at offer time: the driver compares what each provider claimed when they offered.
+    distanceMeters: integer().notNull(),
+    status: offerStatus().notNull().default('pending'),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // One offer per provider per request. Leading request_id also serves "offers for request X".
+    uniqueIndex('offers_one_per_provider_per_request').on(t.requestId, t.providerId),
+    check('offers_price_positive', sql`${t.priceNaira} > 0`),
+    check('offers_eta_positive', sql`${t.etaMinutes} > 0`),
   ],
 );
