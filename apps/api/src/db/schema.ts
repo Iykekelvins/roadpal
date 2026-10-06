@@ -1,4 +1,11 @@
-import { ISSUE_TYPES, USER_ROLES } from '@repo/shared';
+import {
+  ACTIVE_REQUEST_STATUSES,
+  INITIAL_SEARCH_RADIUS_KM,
+  ISSUE_TYPES,
+  REQUEST_STATUSES,
+  USER_ROLES,
+  VEHICLE_TYPES,
+} from '@repo/shared';
 import { sql } from 'drizzle-orm';
 import {
   boolean,
@@ -9,12 +16,15 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 import { geographyPoint } from './geography.js';
 
 export const userRole = pgEnum('user_role', USER_ROLES);
 export const issueType = pgEnum('issue_type', ISSUE_TYPES);
+export const vehicleType = pgEnum('vehicle_type', VEHICLE_TYPES);
+export const requestStatus = pgEnum('request_status', REQUEST_STATUSES);
 
 export const users = pgTable('users', {
   id: uuid().primaryKey().defaultRandom(),
@@ -73,5 +83,32 @@ export const providerProfiles = pgTable(
     // GiST indexes 2D space, so radius searches skip far-away providers instead of scanning all.
     index().using('gist', t.lastLocation),
     check('service_radius_km_range', sql`${t.serviceRadiusKm} between 1 and 50`),
+  ],
+);
+
+// A driver's need for help. Jobs (a provider's attempt to fix it) come later and reference this.
+export const requests = pgTable(
+  'requests',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    driverId: uuid()
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    location: geographyPoint().notNull(),
+    vehicleType: vehicleType().notNull(),
+    issueType: issueType().notNull(),
+    note: text(),
+    status: requestStatus().notNull().default('open'),
+    searchRadiusKm: integer().notNull().default(INITIAL_SEARCH_RADIUS_KM),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp({ withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index().using('gist', t.location),
+    // One active request per driver, enforced by the database so concurrent creates can't both succeed.
+    uniqueIndex('requests_one_active_per_driver')
+      .on(t.driverId)
+      // Literal values (not query parameters): index definitions live in migration SQL.
+      .where(sql.raw(`status in (${ACTIVE_REQUEST_STATUSES.map((s) => `'${s}'`).join(', ')})`)),
   ],
 );

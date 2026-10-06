@@ -18,3 +18,9 @@ export type IssueType = z.infer<typeof IssueTypeSchema>;
 export const USER_ROLES = ['driver', 'provider'] as const;
 export const UserRoleSchema = z.enum(USER_ROLES);
 export type UserRole = z.infer<typeof UserRoleSchema>;
+
+export const REQUEST_STATUSES = ['open', 'matched', 'resolved', 'cancelled', 'expired'] as const;
+export const RequestStatusSchema = z.enum(REQUEST_STATUSES);
+export type RequestStatus = z.infer<typeof RequestStatusSchema>;
+/** A driver can have at most one request in these states. */
+export const ACTIVE_REQUEST_STATUSES = ['open', 'matched'] as const satisfies readonly RequestStatus[];
