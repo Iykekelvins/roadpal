@@ -5,6 +5,7 @@ const base =
   "inline-flex items-center justify-center gap-2 rounded-2xl font-extrabold select-none " +
   "transition-[background-color,border-color,color,transform] duration-150 ease-out " +
   "active:scale-[0.97] motion-reduce:transition-none motion-reduce:active:scale-100 " +
+  "disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100 " +
   "focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-primary";
 
 const variants = {
