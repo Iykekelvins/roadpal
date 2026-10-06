@@ -8,6 +8,9 @@ const EnvSchema = z.object({
     .url()
     .refine((url) => url.startsWith('postgres'), 'Must be a postgres:// connection string'),
   JWT_ACCESS_SECRET: z.string().min(32, 'Must be at least 32 characters (see .env.example)'),
+  // Path the browser sees for the auth endpoints (the web app proxies /api/* to this API), so the
+  // refresh cookie is only sent to them.
+  REFRESH_COOKIE_PATH: z.string().startsWith('/').default('/api/auth'),
   // Background sweeps (expiry, radius widening, cleanup). Can be turned off, e.g. for local debugging.
   SWEEPS_ENABLED: z
     .enum(['true', 'false'])

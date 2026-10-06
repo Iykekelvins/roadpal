@@ -25,5 +25,10 @@ export const VerifyOtpSchema = z.object({
 });
 export type VerifyOtpInput = z.infer<typeof VerifyOtpSchema>;
 
-export const RefreshTokenSchema = z.object({ refreshToken: z.string().min(1) });
+// Browser clients send no body token: theirs travels in the httpOnly cookie (see TOKEN_TRANSPORT_HEADER).
+export const RefreshTokenSchema = z.object({ refreshToken: z.string().min(1).optional() });
 export type RefreshTokenInput = z.infer<typeof RefreshTokenSchema>;
+
+/** Send `X-Token-Transport: cookie` to receive the refresh token as an httpOnly cookie instead of in the body. */
+export const TOKEN_TRANSPORT_HEADER = 'x-token-transport';
+export const REFRESH_TOKEN_COOKIE = 'rp_refresh';
