@@ -1,8 +1,8 @@
-import type { IssueType, LatLng } from '@repo/shared';
-import { and, eq, sql } from 'drizzle-orm';
+import { ACTIVE_JOB_STATUSES, type IssueType, type LatLng } from '@repo/shared';
+import { and, eq, inArray, notExists, sql } from 'drizzle-orm';
 import type { DbExecutor } from '../db/database.module.js';
 import { toEwkt } from '../db/geography.js';
-import { providerProfiles } from '../db/schema.js';
+import { jobs, providerProfiles } from '../db/schema.js';
 
 /** Providers whose last location is older than this are treated as gone (dead battery, no signal). */
 export const PROVIDER_LOCATION_FRESH_SECONDS = 120;
@@ -21,7 +21,7 @@ export interface ProviderMatch {
   distanceMeters: number;
 }
 
-/** Online, recently-seen providers who handle this issue and are in range, nearest first. */
+/** Online, recently-seen, not-busy providers who handle this issue and are in range, nearest first. */
 export async function findMatchingProviders(
   db: DbExecutor,
   { location, issueType, searchRadiusKm, providerId }: MatchCriteria,
@@ -38,6 +38,13 @@ export async function findMatchingProviders(
         eq(providerProfiles.isOnline, true),
         sql`${providerProfiles.lastLocationAt} > now() - make_interval(secs => ${PROVIDER_LOCATION_FRESH_SECONDS})`,
         sql`${issueType}::issue_type = ANY(${providerProfiles.services})`,
+        // Busy providers (already on a job) aren't notified and can't offer.
+        notExists(
+          db
+            .select({ one: sql`1` })
+            .from(jobs)
+            .where(and(eq(jobs.providerId, providerProfiles.userId), inArray(jobs.status, [...ACTIVE_JOB_STATUSES]))),
+        ),
         // Constant radius: the GiST index can turn this into a bounding-box lookup.
         sql`ST_DWithin(${providerProfiles.lastLocation}, ${point}, ${searchRadiusKm * 1000})`,
         // Per-row radius (how far this provider will travel): can't use the index, so it only

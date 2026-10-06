@@ -28,3 +28,9 @@ export const ACTIVE_REQUEST_STATUSES = ['open', 'matched'] as const satisfies re
 export const OFFER_STATUSES = ['pending', 'accepted', 'rejected', 'withdrawn', 'expired'] as const;
 export const OfferStatusSchema = z.enum(OFFER_STATUSES);
 export type OfferStatus = z.infer<typeof OfferStatusSchema>;
+
+export const JOB_STATUSES = ['accepted', 'en_route', 'arrived', 'in_progress', 'completed', 'cancelled'] as const;
+export const JobStatusSchema = z.enum(JOB_STATUSES);
+export type JobStatus = z.infer<typeof JobStatusSchema>;
+/** A request and a provider can each have at most one job in these states. */
+export const ACTIVE_JOB_STATUSES = ['accepted', 'en_route', 'arrived', 'in_progress'] as const satisfies readonly JobStatus[];

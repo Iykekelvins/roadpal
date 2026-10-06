@@ -50,6 +50,13 @@
       "when": 1791262654890,
       "tag": "0006_create_offers",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791263085372,
+      "tag": "0007_create_jobs",
+      "breakpoints": true
     }
   ]
 }

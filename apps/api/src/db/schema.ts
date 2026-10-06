@@ -1,7 +1,9 @@
 import {
+  ACTIVE_JOB_STATUSES,
   ACTIVE_REQUEST_STATUSES,
   INITIAL_SEARCH_RADIUS_KM,
   ISSUE_TYPES,
+  JOB_STATUSES,
   OFFER_STATUSES,
   REQUEST_STATUSES,
   USER_ROLES,
@@ -22,11 +24,16 @@ import {
 } from 'drizzle-orm/pg-core';
 import { geographyPoint } from './geography.js';
 
+// Literal values (not query parameters): partial index definitions live in migration SQL.
+const statusIn = (statuses: readonly string[]) =>
+  sql.raw(`status in (${statuses.map((s) => `'${s}'`).join(', ')})`);
+
 export const userRole = pgEnum('user_role', USER_ROLES);
 export const issueType = pgEnum('issue_type', ISSUE_TYPES);
 export const vehicleType = pgEnum('vehicle_type', VEHICLE_TYPES);
 export const requestStatus = pgEnum('request_status', REQUEST_STATUSES);
 export const offerStatus = pgEnum('offer_status', OFFER_STATUSES);
+export const jobStatus = pgEnum('job_status', JOB_STATUSES);
 
 export const users = pgTable('users', {
   id: uuid().primaryKey().defaultRandom(),
@@ -110,8 +117,7 @@ export const requests = pgTable(
     // One active request per driver, enforced by the database so concurrent creates can't both succeed.
     uniqueIndex('requests_one_active_per_driver')
       .on(t.driverId)
-      // Literal values (not query parameters): index definitions live in migration SQL.
-      .where(sql.raw(`status in (${ACTIVE_REQUEST_STATUSES.map((s) => `'${s}'`).join(', ')})`)),
+      .where(statusIn(ACTIVE_REQUEST_STATUSES)),
   ],
 );
 
@@ -138,5 +144,35 @@ export const offers = pgTable(
     uniqueIndex('offers_one_per_provider_per_request').on(t.requestId, t.providerId),
     check('offers_price_positive', sql`${t.priceNaira} > 0`),
     check('offers_eta_positive', sql`${t.etaMinutes} > 0`),
+  ],
+);
+
+// One provider's attempt to fix a request. A request can have several over time (e.g. a no-show
+// is cancelled and the driver picks someone else), but only one active at once.
+export const jobs = pgTable(
+  'jobs',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    requestId: uuid()
+      .notNull()
+      .references(() => requests.id, { onDelete: 'cascade' }),
+    offerId: uuid()
+      .notNull()
+      .unique()
+      .references(() => offers.id, { onDelete: 'cascade' }),
+    providerId: uuid()
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    status: jobStatus().notNull().default('accepted'),
+    acceptedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    enRouteAt: timestamp({ withTimezone: true }),
+    arrivedAt: timestamp({ withTimezone: true }),
+    startedAt: timestamp({ withTimezone: true }),
+    completedAt: timestamp({ withTimezone: true }),
+    cancelledAt: timestamp({ withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('jobs_one_active_per_request').on(t.requestId).where(statusIn(ACTIVE_JOB_STATUSES)),
+    uniqueIndex('jobs_one_active_per_provider').on(t.providerId).where(statusIn(ACTIVE_JOB_STATUSES)),
   ],
 );

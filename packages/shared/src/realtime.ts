@@ -4,6 +4,7 @@
 // view (e.g. GET /providers/me/nearby-requests) and de-duplicate by id.
 
 import type { IssueType, VehicleType } from './enums';
+import type { JobView } from './jobs';
 import type { OfferView } from './offers';
 
 /** A request as a provider sees it before acceptance: distance, never the driver's exact location. */
@@ -25,6 +26,12 @@ export interface ServerToClientEvents {
   'request:new': (request: NearbyRequest) => void;
   /** A provider made an offer on the driver's request. */
   'offer:new': (offer: OfferView) => void;
+  /** To the winning provider: the driver accepted their offer. Includes exact location and phone. */
+  'offer:accepted': (job: JobView) => void;
+  /** To other providers on the request: the driver chose someone else. */
+  'offer:rejected': (payload: { offerId: string; requestId: string }) => void;
+  /** To a driver: a provider's offer was withdrawn because they took another job. */
+  'offer:withdrawn': (payload: { offerId: string; requestId: string }) => void;
 }
 
 /** Events clients send to the server (none yet: client actions go over REST). */
