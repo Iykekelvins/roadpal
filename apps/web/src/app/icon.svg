@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <!-- Simplified RoadPal mark for browser tabs (drawn at 16-32px): tyre ring + hub. The detailed
+       mark with spokes is used where there's room (header logo, apple-icon.png). -->
+  <rect width="16" height="16" rx="3.5" fill="#0B6B43"/>
+  <circle cx="8" cy="8" r="4.6" fill="none" stroke="#FFFFFF" stroke-width="1.9"/>
+  <circle cx="8" cy="8" r="1.5" fill="#FFFFFF"/>
+</svg>

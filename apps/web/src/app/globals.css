@@ -1,0 +1,195 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens. Components use the names (bg-primary, text-muted), never hex codes, so the
+ * light/dark switch and any future palette change happen here only.
+ * "on-x" is the text colour that sits on an "x" background with enough contrast.
+ */
+:root {
+  color-scheme: light;
+  --ground: #f5f7f6;
+  --surface: #ffffff;
+  --text: #0f1a14;
+  --muted: #4b5a52;
+  --border: #d9e0dc;
+
+  --primary: #0b6b43;
+  --primary-hover: #08573a;
+  --on-primary: #ffffff;
+  --primary-soft: #e3f2ea;
+  --on-primary-soft: #0a5536;
+
+  /* Amber is reserved for "I need help" moments, so it keeps its meaning. */
+  --signal: #f5a300;
+  --signal-hover: #e09500;
+  --on-signal: #1a1300;
+  --signal-soft: #fff1d6;
+  --on-signal-soft: #6e4300;
+
+  --danger: #b42318;
+  --danger-soft: #fdecea;
+  --on-danger-soft: #9b1c13;
+
+  --info: #1d5fd1;
+  --info-soft: #e6eefb;
+  --on-info-soft: #1a4fb0;
+
+  --neutral-soft: #ecefed;
+  --on-neutral-soft: #33413a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --ground: #0d1210;
+    --surface: #161d1a;
+    --text: #eef3f0;
+    --muted: #a3b1a9;
+    --border: #2a3530;
+
+    --primary: #3ccb8e;
+    /* On dark backgrounds, hover goes lighter, not darker. */
+    --primary-hover: #5fd8a4;
+    --on-primary: #04231a;
+    --primary-soft: #123a2a;
+    --on-primary-soft: #6bddac;
+
+    --signal: #ffb020;
+    --signal-hover: #ffc24d;
+    --on-signal: #1a1300;
+    --signal-soft: #3a2a08;
+    --on-signal-soft: #ffd27a;
+
+    --danger: #ff7a6e;
+    --danger-soft: #3a1512;
+    --on-danger-soft: #ff9b91;
+
+    --info: #7ab0ff;
+    --info-soft: #17284a;
+    --on-info-soft: #9cc2ff;
+
+    --neutral-soft: #232e29;
+    --on-neutral-soft: #c9d4ce;
+  }
+}
+
+@theme inline {
+  /* Drop Tailwind's default palette: only our tokens exist, so no stray bg-blue-500 sneaks in. */
+  --color-*: initial;
+
+  --color-ground: var(--ground);
+  --color-surface: var(--surface);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-on-primary: var(--on-primary);
+  --color-primary-soft: var(--primary-soft);
+  --color-on-primary-soft: var(--on-primary-soft);
+  --color-signal: var(--signal);
+  --color-signal-hover: var(--signal-hover);
+  --color-on-signal: var(--on-signal);
+  --color-signal-soft: var(--signal-soft);
+  --color-on-signal-soft: var(--on-signal-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-on-danger-soft: var(--on-danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-on-info-soft: var(--on-info-soft);
+  --color-neutral-soft: var(--neutral-soft);
+  --color-on-neutral-soft: var(--on-neutral-soft);
+
+  --font-sans: var(--font-jakarta), system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --animate-rise: rise 600ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+body {
+  background: var(--ground);
+  color: var(--text);
+}
+
+/*
+ * Motion. Only transform and opacity are animated (the GPU handles them without re-layout, so
+ * they stay smooth on low-end phones), and everything is skipped for prefers-reduced-motion.
+ */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes elevate {
+  to {
+    box-shadow: 0 6px 24px -12px rgb(0 0 0 / 0.25);
+  }
+}
+
+/*
+ * Scroll reveal: `.reveal` elements fade up once, the first time they enter the screen
+ * (RevealOnScroll adds .is-visible). A `.reveal-group` triggers once for all its `.reveal-item`
+ * children, which then cascade by their --reveal-delay. Hidden only after that script has run (.reveal-active on
+ * <html>), so content is never stuck invisible if JavaScript fails. Stagger with --reveal-delay.
+ * translate/box-shadow are listed too so card hover effects on the same element keep their own,
+ * undelayed transition.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .reveal-active .reveal,
+  .reveal-active .reveal-group .reveal-item {
+    transition-property: opacity, transform, translate, box-shadow;
+    transition-duration: 700ms, 700ms, 200ms, 200ms;
+    transition-timing-function: cubic-bezier(0.2, 0.7, 0.2, 1);
+    transition-delay: var(--reveal-delay, 0ms), var(--reveal-delay, 0ms), 0ms, 0ms;
+  }
+
+  .reveal-active .reveal:not(.is-visible),
+  .reveal-active .reveal-group:not(.is-visible) .reveal-item {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+}
+
+/* Header shadow that appears once the page has scrolled a little (scroll-linked; where the
+   browser doesn't support it, the header simply has no shadow). */
+@utility elevate-on-scroll {
+  @media (prefers-reduced-motion: no-preference) {
+    @supports (animation-timeline: scroll()) {
+      animation: elevate linear both;
+      animation-timeline: scroll();
+      animation-range: 0 80px;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Lets <details> animate between height 0 and auto (no JavaScript). Unsupported: opens instantly. */
+  :root {
+    interpolate-size: allow-keywords;
+  }
+
+  details.faq::details-content {
+    block-size: 0;
+    overflow: clip;
+    opacity: 0;
+    transition:
+      block-size 300ms cubic-bezier(0.2, 0.7, 0.2, 1),
+      opacity 300ms ease,
+      content-visibility 300ms allow-discrete;
+  }
+
+  details.faq[open]::details-content {
+    block-size: auto;
+    opacity: 1;
+  }
+}

@@ -3,3 +3,6 @@ packages:
   - "packages/*"
 allowBuilds:
   esbuild: true
+  # Next.js optional deps: no install scripts needed
+  sharp: false
+  unrs-resolver: false
