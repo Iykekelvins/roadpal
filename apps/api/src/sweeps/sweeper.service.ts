@@ -4,11 +4,16 @@ import { Interval } from '@nestjs/schedule';
 import type { Env } from '../config/env.js';
 import { DB, type Database } from '../db/database.module.js';
 import { dispatchRequest } from '../matching/dispatch-request.js';
+import { notifyWithdrawn } from '../offers/withdraw-pending-offers.js';
 import { RealtimeGateway } from '../realtime/realtime.gateway.js';
+import { cleanupExpiredAuthData } from './cleanup.js';
 import { expireRequests, expireStaleOffers, type ExpiredOffer } from './expire.js';
+import { offlineGhostProviders } from './ghosts.js';
 import { widenSearchRadius } from './widen.js';
 
 export const SWEEP_INTERVAL_MS = 30_000;
+// Nothing in cleanup is time-sensitive, and its deletes scan unindexed columns: hourly is plenty.
+export const CLEANUP_INTERVAL_MS = 60 * 60_000;
 
 /**
  * Periodic, database-driven background work. Deadlines live in the rows (not in timers), so
@@ -18,6 +23,7 @@ export const SWEEP_INTERVAL_MS = 30_000;
 export class SweeperService {
   private readonly logger = new Logger(SweeperService.name);
   private running = false;
+  private cleaning = false;
 
   constructor(
     @Inject(DB) private readonly db: Database,
@@ -40,9 +46,31 @@ export class SweeperService {
     }
   }
 
+  @Interval(CLEANUP_INTERVAL_MS)
+  async cleanup() {
+    if (!this.config.get('SWEEPS_ENABLED', { infer: true }) || this.cleaning) return;
+    this.cleaning = true;
+    try {
+      const deleted = await cleanupExpiredAuthData(this.db);
+      this.logger.log(`Cleanup: ${deleted.refreshTokens} refresh token(s), ${deleted.otpCodes} OTP code(s) deleted`);
+    } catch (error) {
+      this.logger.error('Cleanup failed', error as Error);
+    } finally {
+      this.cleaning = false;
+    }
+  }
+
   async runOnce() {
-    // Order matters: an offer that just went stale no longer blocks widening, and overdue requests
-    // are expired before they could be widened.
+    // Ghosts first: their offers are withdrawn before anything else looks at offers.
+    const ghosts = await offlineGhostProviders(this.db);
+    for (const providerId of ghosts.providerIds) {
+      this.realtime.emitToUser(providerId, 'provider:offline', { reason: 'stale_location' });
+    }
+    notifyWithdrawn(this.realtime, ghosts.withdrawn);
+    if (ghosts.providerIds.length) this.logger.log(`Set ${ghosts.providerIds.length} silent provider(s) offline`);
+
+    // An offer that just went stale no longer blocks widening, and overdue requests are expired
+    // before they could be widened.
     this.notifyExpiredOffers(await expireStaleOffers(this.db));
 
     const expired = await expireRequests(this.db);

@@ -39,6 +39,8 @@ export interface ServerToClientEvents {
   'request:expired': (payload: { requestId: string }) => void;
   /** To the driver: no offers yet, so the search widened and more providers were notified. */
   'request:widened': (payload: { requestId: string; searchRadiusKm: number; newlyNotified: number }) => void;
+  /** To a provider the server set offline (no location for too long). Their pending offers were withdrawn. */
+  'provider:offline': (payload: { reason: 'stale_location' }) => void;
   /** To both participants: the job's status changed. */
   'job:updated': (job: JobView) => void;
   /** To the driver while their job is en route: the provider's latest position. */

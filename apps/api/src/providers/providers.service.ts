@@ -11,6 +11,8 @@ import { and, eq, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import { DB, type Database } from '../db/database.module.js';
 import { jobs, offers, providerProfiles } from '../db/schema.js';
 import { findNearbyRequests } from '../matching/find-nearby-requests.js';
+import { notifyWithdrawn, withdrawPendingOffers } from '../offers/withdraw-pending-offers.js';
+import { RealtimeGateway } from '../realtime/realtime.gateway.js';
 import { ratingAvg } from './rating.js';
 
 type ProviderProfileRow = typeof providerProfiles.$inferSelect;
@@ -30,7 +32,10 @@ export function toProfileResponse(row: ProviderProfileRow) {
 
 @Injectable()
 export class ProvidersService {
-  constructor(@Inject(DB) private readonly db: Database) {}
+  constructor(
+    @Inject(DB) private readonly db: Database,
+    private readonly realtime: RealtimeGateway,
+  ) {}
 
   async getProfile(userId: string) {
     const [row] = await this.db
@@ -61,12 +66,17 @@ export class ProvidersService {
       : // Offline providers aren't tracked: drop the location.
         { isOnline: false, lastLocation: null, lastLocationAt: null };
 
-    const [row] = await this.db
-      .update(providerProfiles)
-      .set({ ...set, updatedAt: new Date() })
-      .where(eq(providerProfiles.userId, userId))
-      .returning();
-    if (!row) throw new NotFoundException('Provider profile not set up yet');
+    const { row, withdrawn } = await this.db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(providerProfiles)
+        .set({ ...set, updatedAt: new Date() })
+        .where(eq(providerProfiles.userId, userId))
+        .returning();
+      if (!updated) throw new NotFoundException('Provider profile not set up yet');
+      // Going offline means these offers can't be honoured; don't let a driver accept them.
+      return { row: updated, withdrawn: input.isOnline ? [] : await withdrawPendingOffers(tx, [userId]) };
+    });
+    notifyWithdrawn(this.realtime, withdrawn);
     return toProfileResponse(row);
   }
 

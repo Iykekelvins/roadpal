@@ -1,4 +1,4 @@
-import { inArray, like } from 'drizzle-orm';
+import { eq, inArray, like } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import type { Database } from '../src/db/database.module.js';
@@ -6,6 +6,10 @@ import * as schema from '../src/db/schema.js';
 import { findMatchingProviders } from '../src/matching/find-matching-providers.js';
 import { expireRequests, expireStaleOffers } from '../src/sweeps/expire.js';
 import { widenSearchRadius } from '../src/sweeps/widen.js';
+import { cleanupExpiredAuthData } from '../src/sweeps/cleanup.js';
+import { offlineGhostProviders } from '../src/sweeps/ghosts.js';
+import { ProvidersService } from '../src/providers/providers.service.js';
+import type { RealtimeGateway } from '../src/realtime/realtime.gateway.js';
 
 // Sweeps against the real database. Fixtures use their own phone prefix and are deleted afterwards.
 // Sweeps may also touch real dev rows that are genuinely due, so assertions only look at fixture ids.
@@ -172,6 +176,121 @@ describe('outer-ring matching after widening', () => {
     expect(everyone).toEqual(expect.arrayContaining([near.id, far.id]));
     expect(ring).toContain(far.id);
     expect(ring).not.toContain(near.id);
+  });
+});
+
+describe('offlineGhostProviders', () => {
+  async function provider(opts: { isOnline: boolean; lastSeenMinutesAgo: number | null }) {
+    const p = await user('provider');
+    await db.insert(schema.providerProfiles).values({
+      userId: p.id,
+      services: ['flat_tyre'],
+      isOnline: opts.isOnline,
+      lastLocation: opts.lastSeenMinutesAgo === null ? null : HERE,
+      lastLocationAt: opts.lastSeenMinutesAgo === null ? null : minutesAgo(opts.lastSeenMinutesAgo),
+    });
+    return p;
+  }
+  async function profile(id: string) {
+    const [p] = await db.select().from(schema.providerProfiles).where(eq(schema.providerProfiles.userId, id));
+    return p!;
+  }
+
+  it('sets silent, job-less providers offline and withdraws their pending offers', async () => {
+    const ghost = await provider({ isOnline: true, lastSeenMinutesAgo: 3 });
+    const fresh = await provider({ isOnline: true, lastSeenMinutesAgo: 0 });
+    const alreadyOffline = await provider({ isOnline: false, lastSeenMinutesAgo: null });
+    const r = await request('open', minutesFromNow(5));
+    const [ghostOffer] = await db
+      .insert(schema.offers)
+      .values({ requestId: r.id, providerId: ghost.id, priceNaira: 2000, etaMinutes: 10, distanceMeters: 100 })
+      .returning();
+
+    const result = await offlineGhostProviders(db);
+
+    expect(result.providerIds).toContain(ghost.id);
+    expect(result.providerIds).not.toContain(fresh.id);
+    expect(result.providerIds).not.toContain(alreadyOffline.id);
+    expect(result.withdrawn.find((w) => w.id === ghostOffer!.id)).toMatchObject({ driverId: r.driverId });
+    expect(await profile(ghost.id)).toMatchObject({ isOnline: false, lastLocation: null });
+    expect((await profile(fresh.id)).isOnline).toBe(true);
+    expect(await statusesOf(schema.offers, [ghostOffer!.id])).toEqual({ [ghostOffer!.id]: 'withdrawn' });
+  });
+
+  it('leaves a silent provider alone while they are on an active job (e.g. en route in a dead zone)', async () => {
+    const onJob = await provider({ isOnline: true, lastSeenMinutesAgo: 5 });
+    const r = await request('matched', minutesFromNow(5));
+    const [o] = await db
+      .insert(schema.offers)
+      .values({ requestId: r.id, providerId: onJob.id, priceNaira: 2000, etaMinutes: 10, distanceMeters: 100, status: 'accepted' })
+      .returning();
+    await db.insert(schema.jobs).values({ requestId: r.id, offerId: o!.id, providerId: onJob.id, status: 'en_route' });
+
+    const result = await offlineGhostProviders(db);
+
+    expect(result.providerIds).not.toContain(onJob.id);
+    expect((await profile(onJob.id)).isOnline).toBe(true);
+  });
+
+  it('going offline by hand also withdraws pending offers and tells the driver', async () => {
+    const emitted: [string, string, unknown][] = [];
+    const realtime = { emitToUser: (u: string, e: string, p: unknown) => emitted.push([u, e, p]) } as unknown as RealtimeGateway;
+    const p = await provider({ isOnline: true, lastSeenMinutesAgo: 0 });
+    const r = await request('open', minutesFromNow(5));
+    const [o] = await db
+      .insert(schema.offers)
+      .values({ requestId: r.id, providerId: p.id, priceNaira: 2000, etaMinutes: 10, distanceMeters: 100 })
+      .returning();
+
+    await new ProvidersService(db, realtime).setStatus(p.id, { isOnline: false });
+
+    expect(await statusesOf(schema.offers, [o!.id])).toEqual({ [o!.id]: 'withdrawn' });
+    expect(emitted).toContainEqual([r.driverId, 'offer:withdrawn', { offerId: o!.id, requestId: r.id }]);
+  });
+});
+
+describe('cleanupExpiredAuthData', () => {
+  it('deletes expired tokens and long-revoked ones, but keeps recently revoked ones for reuse detection', async () => {
+    const owner = await user('driver');
+    const day = 24 * 60;
+    const token = (name: string, expiresAt: Date, revokedAt: Date | null) => ({
+      userId: owner.id,
+      familyId: crypto.randomUUID(),
+      tokenHash: `test-${name}-${crypto.randomUUID()}`,
+      expiresAt,
+      revokedAt,
+    });
+    const rows = await db
+      .insert(schema.refreshTokens)
+      .values([
+        token('live', minutesFromNow(day), null),
+        token('expired', minutesAgo(1), null),
+        token('revokedLongAgo', minutesFromNow(day), minutesAgo(8 * day)),
+        token('revokedRecently', minutesFromNow(day), minutesAgo(60)),
+      ])
+      .returning({ id: schema.refreshTokens.id, tokenHash: schema.refreshTokens.tokenHash });
+    const phoneFresh = nextPhone();
+    const phoneOld = nextPhone();
+    await db.insert(schema.otpCodes).values([
+      { phone: phoneFresh, codeHash: 'x', expiresAt: minutesFromNow(5) },
+      { phone: phoneOld, codeHash: 'x', expiresAt: minutesAgo(2 * 60) },
+    ]);
+
+    await cleanupExpiredAuthData(db);
+
+    const left = await db
+      .select({ tokenHash: schema.refreshTokens.tokenHash })
+      .from(schema.refreshTokens)
+      .where(inArray(schema.refreshTokens.id, rows.map((r) => r.id)));
+    const kept = left.map((t) => t.tokenHash.split('-')[1]).sort();
+    expect(kept).toEqual(['live', 'revokedRecently']);
+
+    const otps = await db
+      .select({ phone: schema.otpCodes.phone })
+      .from(schema.otpCodes)
+      .where(inArray(schema.otpCodes.phone, [phoneFresh, phoneOld]));
+    expect(otps.map((o) => o.phone)).toEqual([phoneFresh]);
+    await db.delete(schema.otpCodes).where(inArray(schema.otpCodes.phone, [phoneFresh]));
   });
 });
 
