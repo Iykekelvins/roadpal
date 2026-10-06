@@ -32,6 +32,8 @@ export interface ServerToClientEvents {
   'offer:rejected': (payload: { offerId: string; requestId: string }) => void;
   /** To a driver: a provider's offer was withdrawn because they took another job. */
   'offer:withdrawn': (payload: { offerId: string; requestId: string }) => void;
+  /** To both participants: the job's status changed. */
+  'job:updated': (job: JobView) => void;
 }
 
 /** Events clients send to the server (none yet: client actions go over REST). */

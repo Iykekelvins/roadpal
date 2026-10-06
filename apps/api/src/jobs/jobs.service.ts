@@ -1,5 +1,17 @@
-import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { ACTIVE_JOB_STATUSES, type JobView } from '@repo/shared';
+import {
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  ACTIVE_JOB_STATUSES,
+  checkJobTransition,
+  type JobStatus,
+  type JobView,
+  type UpdateJobStatusInput,
+} from '@repo/shared';
 import { and, eq, gt, inArray, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { AuthUser } from '../auth/decorators.js';
@@ -10,6 +22,17 @@ import { ratingAvg } from '../providers/rating.js';
 import { RealtimeGateway } from '../realtime/realtime.gateway.js';
 
 const driverUser = alias(users, 'driver_user');
+type JobInsert = typeof jobs.$inferInsert;
+
+/** Which timestamp column records reaching each status. */
+const STATUS_TIMESTAMP: Record<Exclude<JobStatus, 'accepted'>, keyof JobInsert> = {
+  en_route: 'enRouteAt',
+  arrived: 'arrivedAt',
+  in_progress: 'startedAt',
+  completed: 'completedAt',
+  cancelled: 'cancelledAt',
+};
+
 const providerUser = alias(users, 'provider_user');
 
 @Injectable()
@@ -119,6 +142,46 @@ export class JobsService {
     return job;
   }
 
+  async updateStatus(user: AuthUser, jobId: string, { status: to }: UpdateJobStatusInput): Promise<JobView> {
+    await this.db.transaction(async (tx) => {
+      const [current] = await tx
+        .select({ status: jobs.status, requestId: jobs.requestId })
+        .from(jobs)
+        .innerJoin(requests, eq(requests.id, jobs.requestId))
+        .where(and(eq(jobs.id, jobId), this.participant(user)));
+      if (!current) throw new NotFoundException('Job not found');
+
+      const check = checkJobTransition(current.status, to, user.role);
+      if (!check.ok) {
+        const body = { message: `Can't move a job from ${current.status} to ${to}.`, code: check.reason };
+        throw check.reason === 'NOT_ALLOWED_FOR_ROLE' ? new ForbiddenException(body) : new ConflictException(body);
+      }
+
+      // Compare-and-set: only update if the status is still what we just checked against.
+      const [updated] = await tx
+        .update(jobs)
+        .set({ status: to, [STATUS_TIMESTAMP[to]]: new Date() })
+        .where(and(eq(jobs.id, jobId), eq(jobs.status, current.status)))
+        .returning({ id: jobs.id });
+      if (!updated) {
+        throw new ConflictException({ message: 'This job was just updated. Refresh and try again.', code: 'JOB_CHANGED' });
+      }
+
+      if (to === 'completed') {
+        await tx.update(requests).set({ status: 'resolved' }).where(eq(requests.id, current.requestId));
+      }
+    });
+
+    const [job] = await this.findViews(eq(jobs.id, jobId));
+    this.emitToParticipants(job!, 'job:updated');
+    return job!;
+  }
+
+  private emitToParticipants(job: JobView, event: 'job:updated') {
+    this.realtime.emitToUser(job.driver.id, event, job);
+    this.realtime.emitToUser(job.provider.id, event, job);
+  }
+
   async findActive(user: AuthUser) {
     const [job] = await this.findViews(
       and(this.participant(user), inArray(jobs.status, [...ACTIVE_JOB_STATUSES]))!,
@@ -173,6 +236,11 @@ export class JobsService {
       issueType: rest.issueType,
       note: rest.note,
       acceptedAt: job.acceptedAt.toISOString(),
+      enRouteAt: job.enRouteAt?.toISOString() ?? null,
+      arrivedAt: job.arrivedAt?.toISOString() ?? null,
+      startedAt: job.startedAt?.toISOString() ?? null,
+      completedAt: job.completedAt?.toISOString() ?? null,
+      cancelledAt: job.cancelledAt?.toISOString() ?? null,
       driver: rest.driver,
       provider: { ...provider, ratingAvg: ratingAvg(ratingSum, ratingCount), ratingCount },
     }));

@@ -167,4 +167,25 @@ describe('accepting offers under concurrency', () => {
       expect(pending).toHaveLength(0);
     }
   }, 120_000);
+
+  it('two simultaneous status updates on one job: exactly one wins', async () => {
+    for (let round = 0; round < 5; round++) {
+      const driver = await createDriver();
+      const provider = await createProvider();
+      const request = await createRequest(driver.id);
+      const job = await jobsService.acceptOffer(driver.id, (await offer(provider.id, request.id)).id);
+      const asProvider = { id: provider.id, role: 'provider' as const };
+
+      const results = await Promise.allSettled([
+        jobsService.updateStatus(asProvider, job.id, { status: 'en_route' }),
+        jobsService.updateStatus(asProvider, job.id, { status: 'en_route' }),
+      ]);
+
+      const codes = results.map(errorCode);
+      expect(codes.filter((c) => c === 'OK')).toHaveLength(1);
+      // Depending on timing the loser either read the old status (compare-and-set fails: JOB_CHANGED)
+      // or the new one (en_route -> en_route is not a transition: INVALID_TRANSITION).
+      expect(codes.find((c) => c !== 'OK')).toMatch(/^(JOB_CHANGED|INVALID_TRANSITION)$/);
+    }
+  }, 120_000);
 });

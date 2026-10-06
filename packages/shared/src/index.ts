@@ -7,3 +7,4 @@ export * from './requests';
 export * from './realtime';
 export * from './offers';
 export * from './jobs';
+export * from './job-state-machine';

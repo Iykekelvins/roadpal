@@ -16,7 +16,13 @@ export interface JobView {
   vehicleType: VehicleType;
   issueType: IssueType;
   note: string | null;
-  acceptedAt: string; // ISO 8601
+  // Lifecycle timestamps (ISO 8601); null until the job reaches that status.
+  acceptedAt: string;
+  enRouteAt: string | null;
+  arrivedAt: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
   driver: { id: string; name: string | null; phone: string };
   provider: { id: string; name: string | null; phone: string; ratingAvg: number | null; ratingCount: number };
 }
