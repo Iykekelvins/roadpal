@@ -1,7 +1,9 @@
 import { Controller, Get, Inject, ServiceUnavailableException } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DB, type Database } from '../db/database.module.js';
+import { Public } from '../auth/decorators.js';
 
+@Public()
 @Controller('health')
 export class HealthController {
   constructor(@Inject(DB) private readonly db: Database) {}

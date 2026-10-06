@@ -9,7 +9,9 @@ import {
 } from '@repo/shared';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import { AuthService } from './auth.service.js';
+import { Public } from './decorators.js';
 
+@Public()
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
