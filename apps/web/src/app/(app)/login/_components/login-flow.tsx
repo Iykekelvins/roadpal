@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { PhoneSchema, type UserRole } from "@repo/shared";
 import { buttonStyles } from "@/components/button-styles";
 import { ApiError, NetworkError } from "@/lib/api";
+import { formatPhone } from "@/lib/format";
 import { HOME, requestOtp, restoreSession, verifyOtp } from "@/lib/auth";
 
 type Step = "phone" | "code" | "role";
@@ -18,8 +19,6 @@ function toPhone(input: string) {
   return PhoneSchema.safeParse(`+234${local}`);
 }
 
-/** +2348031234567 → +234 803 123 4567 */
-const prettyPhone = (phone: string) => phone.replace(/^(\+234)(\d{3})(\d{3})(\d{4})$/, "$1 $2 $3 $4");
 
 function toProblem(error: unknown): Problem {
   if (error instanceof NetworkError) return { kind: "offline", message: error.message };
@@ -160,7 +159,7 @@ export function LoginFlow({ suggestedRole }: { suggestedRole?: UserRole }) {
             title="Enter the code"
             subtitle={
               <>
-                Sent to <strong className="font-bold text-text">{prettyPhone(phone)}</strong>.{" "}
+                Sent to <strong className="font-bold text-text">{formatPhone(phone)}</strong>.{" "}
                 <button
                   type="button"
                   onClick={() => {
