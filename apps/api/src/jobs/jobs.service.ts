@@ -3,7 +3,7 @@ import { ACTIVE_JOB_STATUSES, type JobView } from '@repo/shared';
 import { and, eq, gt, inArray, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { AuthUser } from '../auth/decorators.js';
-import { isUniqueViolation } from '../common/db-errors.js';
+import { isUniqueViolation, retryOnDeadlock } from '../common/db-errors.js';
 import { DB, type Database } from '../db/database.module.js';
 import { jobs, offers, providerProfiles, requests, users } from '../db/schema.js';
 import { ratingAvg } from '../providers/rating.js';
@@ -20,9 +20,18 @@ export class JobsService {
   ) {}
 
   async acceptOffer(driverId: string, offerId: string): Promise<JobView> {
-    const outcome = await this.db.transaction(async (tx) => {
+    const outcome = await retryOnDeadlock(() => this.db.transaction(async (tx) => {
       const [offer] = await tx.select().from(offers).where(eq(offers.id, offerId));
       if (!offer) throw new NotFoundException('Offer not found');
+
+      // 0. Lock the provider first. Every accept takes locks in the same order (provider, then
+      //    request, then offers), so two accepts of the same provider queue here instead of
+      //    deadlocking on each other's offers. The second then finds its offer withdrawn.
+      await tx
+        .select({ id: providerProfiles.userId })
+        .from(providerProfiles)
+        .where(eq(providerProfiles.userId, offer.providerId))
+        .for('update');
 
       // 1. Claim the request (open -> matched). This takes the row lock: a second accept on the
       //    same request waits here until we commit, then finds it no longer open.
@@ -89,7 +98,7 @@ export class JobsService {
         }
         throw error;
       }
-    });
+    }));
 
     // Notifications only after commit.
     const job = (await this.findViews(eq(jobs.id, outcome.jobId)))[0]!;
