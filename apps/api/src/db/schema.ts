@@ -185,3 +185,28 @@ export const jobs = pgTable(
     uniqueIndex('jobs_one_active_per_provider').on(t.providerId).where(statusIn(ACTIVE_JOB_STATUSES)),
   ],
 );
+
+// One rating per person per job. Ratings are final (no edits) in v1.
+export const ratings = pgTable(
+  'ratings',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    jobId: uuid()
+      .notNull()
+      .references(() => jobs.id, { onDelete: 'cascade' }),
+    fromUserId: uuid()
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    toUserId: uuid()
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    score: integer().notNull(),
+    comment: text(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('ratings_one_per_person_per_job').on(t.jobId, t.fromUserId),
+    index().on(t.toUserId),
+    check('ratings_score_range', sql`${t.score} between 1 and 5`),
+  ],
+);

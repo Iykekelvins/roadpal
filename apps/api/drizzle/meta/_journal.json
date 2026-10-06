@@ -64,6 +64,13 @@
       "when": 1791298638992,
       "tag": "0008_cancellation",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791299613340,
+      "tag": "0009_create_ratings",
+      "breakpoints": true
     }
   ]
 }

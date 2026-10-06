@@ -7,6 +7,7 @@ import { HealthModule } from './health/health.module.js';
 import { JobsModule } from './jobs/jobs.module.js';
 import { OffersModule } from './offers/offers.module.js';
 import { ProvidersModule } from './providers/providers.module.js';
+import { RatingsModule } from './ratings/ratings.module.js';
 import { RealtimeModule } from './realtime/realtime.module.js';
 import { RequestsModule } from './requests/requests.module.js';
 import { UsersModule } from './users/users.module.js';
@@ -23,6 +24,7 @@ import { UsersModule } from './users/users.module.js';
     RealtimeModule,
     OffersModule,
     JobsModule,
+    RatingsModule,
   ],
 })
 export class AppModule {}

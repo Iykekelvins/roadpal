@@ -7,6 +7,7 @@ import type { Database } from '../src/db/database.module.js';
 import * as schema from '../src/db/schema.js';
 import { JobsService } from '../src/jobs/jobs.service.js';
 import { OffersService } from '../src/offers/offers.service.js';
+import { RatingsService } from '../src/ratings/ratings.service.js';
 import type { RealtimeGateway } from '../src/realtime/realtime.gateway.js';
 
 // Concurrency tests: races need separate transactions on separate connections, so these run the
@@ -19,6 +20,7 @@ const db: Database = drizzle({ client: pool, schema, casing: 'snake_case' });
 const realtime = { emitToUser: () => undefined } as unknown as RealtimeGateway;
 const offersService = new OffersService(db, realtime);
 const jobsService = new JobsService(db, realtime);
+const ratingsService = new RatingsService(db);
 
 // Fixtures live near Kano, far from any dev data, under a phone prefix used only by this file.
 const PHONE_PREFIX = '+2347099';
@@ -187,5 +189,77 @@ describe('accepting offers under concurrency', () => {
       // or the new one (en_route -> en_route is not a transition: INVALID_TRANSITION).
       expect(codes.find((c) => c !== 'OK')).toMatch(/^(JOB_CHANGED|INVALID_TRANSITION)$/);
     }
+  }, 120_000);
+});
+
+/** Runs a full job to completion: request, offer, accept, and the provider's four status steps. */
+async function completedJob(driverId: string, providerId: string) {
+  const request = await createRequest(driverId);
+  const job = await jobsService.acceptOffer(driverId, (await offer(providerId, request.id)).id);
+  const asProvider = { id: providerId, role: 'provider' as const };
+  for (const status of ['en_route', 'arrived', 'in_progress', 'completed'] as const) {
+    await jobsService.updateStatus(asProvider, job.id, { status });
+  }
+  return job;
+}
+
+async function providerRating(providerId: string) {
+  const [profile] = await db
+    .select({ sum: schema.providerProfiles.ratingSum, count: schema.providerProfiles.ratingCount })
+    .from(schema.providerProfiles)
+    .where(eq(schema.providerProfiles.userId, providerId));
+  return profile!;
+}
+
+describe('ratings under concurrency', () => {
+  it('a double-tapped rating is stored and counted once', async () => {
+    const driver = await createDriver();
+    const provider = await createProvider();
+    const job = await completedJob(driver.id, provider.id);
+    const asDriver = { id: driver.id, role: 'driver' as const };
+
+    const results = await Promise.allSettled([
+      ratingsService.rate(asDriver, job.id, { score: 5 }),
+      ratingsService.rate(asDriver, job.id, { score: 5 }),
+    ]);
+
+    expect(results.map(errorCode).sort()).toEqual(['ALREADY_RATED', 'OK']);
+    expect(await providerRating(provider.id)).toEqual({ sum: 5, count: 1 });
+  }, 120_000);
+
+  it('simultaneous ratings from different drivers all count (no lost updates)', async () => {
+    const provider = await createProvider();
+    const drivers = [await createDriver(), await createDriver(), await createDriver()];
+    // A provider has one active job at a time, so the jobs are completed one after another...
+    const jobs: Awaited<ReturnType<typeof completedJob>>[] = [];
+    for (const d of drivers) jobs.push(await completedJob(d.id, provider.id));
+
+    // ...and then all three drivers rate at the same moment.
+    const scores = [5, 4, 2];
+    const results = await Promise.allSettled(
+      drivers.map((d, i) => ratingsService.rate({ id: d.id, role: 'driver' }, jobs[i]!.id, { score: scores[i]! })),
+    );
+
+    expect(results.map(errorCode)).toEqual(['OK', 'OK', 'OK']);
+    expect(await providerRating(provider.id)).toEqual({ sum: 11, count: 3 });
+  }, 180_000);
+
+  it('the provider rating the driver does not touch the provider average', async () => {
+    const driver = await createDriver();
+    const provider = await createProvider();
+    const job = await completedJob(driver.id, provider.id);
+
+    await ratingsService.rate({ id: provider.id, role: 'provider' }, job.id, { score: 1, comment: 'Rude' });
+    expect(await providerRating(provider.id)).toEqual({ sum: 0, count: 0 });
+  }, 120_000);
+
+  it('only completed jobs can be rated', async () => {
+    const driver = await createDriver();
+    const provider = await createProvider();
+    const request = await createRequest(driver.id);
+    const job = await jobsService.acceptOffer(driver.id, (await offer(provider.id, request.id)).id);
+
+    const [result] = await Promise.allSettled([ratingsService.rate({ id: driver.id, role: 'driver' }, job.id, { score: 5 })]);
+    expect(errorCode(result!)).toBe('JOB_NOT_COMPLETED');
   }, 120_000);
 });
