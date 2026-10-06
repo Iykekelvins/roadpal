@@ -3,7 +3,7 @@ import { z } from 'zod';
 // Only what the running API needs. DATABASE_URL_DIRECT is read by drizzle-kit, not the app.
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  PORT: z.coerce.number().int().positive().default(3000),
+  PORT: z.coerce.number().int().positive().default(8000),
   DATABASE_URL: z
     .url()
     .refine((url) => url.startsWith('postgres'), 'Must be a postgres:// connection string'),

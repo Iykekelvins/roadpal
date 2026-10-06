@@ -22,7 +22,8 @@
     "check-types": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "simulate": "node --env-file=.env scripts/simulate-vulcanizer.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",
