@@ -3,8 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import { Interval } from '@nestjs/schedule';
 import type { Env } from '../config/env.js';
 import { DB, type Database } from '../db/database.module.js';
+import { dispatchRequest } from '../matching/dispatch-request.js';
 import { RealtimeGateway } from '../realtime/realtime.gateway.js';
 import { expireRequests, expireStaleOffers, type ExpiredOffer } from './expire.js';
+import { widenSearchRadius } from './widen.js';
 
 export const SWEEP_INTERVAL_MS = 30_000;
 
@@ -39,15 +41,27 @@ export class SweeperService {
   }
 
   async runOnce() {
+    // Order matters: an offer that just went stale no longer blocks widening, and overdue requests
+    // are expired before they could be widened.
+    this.notifyExpiredOffers(await expireStaleOffers(this.db));
+
     const expired = await expireRequests(this.db);
     for (const r of expired.requests) {
       this.realtime.emitToUser(r.driverId, 'request:expired', { requestId: r.id });
     }
     this.notifyExpiredOffers(expired.offers);
-
-    this.notifyExpiredOffers(await expireStaleOffers(this.db));
-
     if (expired.requests.length) this.logger.log(`Expired ${expired.requests.length} request(s)`);
+
+    for (const { request, previousRadiusKm } of await widenSearchRadius(this.db)) {
+      // Only the new outer ring: providers inside the old radius were already notified.
+      const newlyNotified = await dispatchRequest(this.db, this.realtime, request, { outsideKm: previousRadiusKm });
+      this.realtime.emitToUser(request.driverId, 'request:widened', {
+        requestId: request.id,
+        searchRadiusKm: request.searchRadiusKm,
+        newlyNotified,
+      });
+      this.logger.log(`Widened request ${request.id} to ${request.searchRadiusKm} km (${newlyNotified} notified)`);
+    }
   }
 
   private notifyExpiredOffers(expired: ExpiredOffer[]) {

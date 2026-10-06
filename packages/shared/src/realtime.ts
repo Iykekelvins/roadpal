@@ -37,6 +37,8 @@ export interface ServerToClientEvents {
   'offer:expired': (payload: { offerId: string; requestId: string }) => void;
   /** To the driver: their request got no accepted offer in time. */
   'request:expired': (payload: { requestId: string }) => void;
+  /** To the driver: no offers yet, so the search widened and more providers were notified. */
+  'request:widened': (payload: { requestId: string; searchRadiusKm: number; newlyNotified: number }) => void;
   /** To both participants: the job's status changed. */
   'job:updated': (job: JobView) => void;
   /** To the driver while their job is en route: the provider's latest position. */

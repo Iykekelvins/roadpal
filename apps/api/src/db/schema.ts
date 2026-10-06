@@ -111,6 +111,8 @@ export const requests = pgTable(
     note: text(),
     status: requestStatus().notNull().default('open'),
     searchRadiusKm: integer().notNull().default(INITIAL_SEARCH_RADIUS_KM),
+    // When providers were last notified (create, reopen, widen); drives radius widening.
+    lastDispatchedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp({ withTimezone: true }).notNull(),
   },

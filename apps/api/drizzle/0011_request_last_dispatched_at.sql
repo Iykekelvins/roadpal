@@ -1,0 +1,1 @@
+ALTER TABLE "requests" ADD COLUMN "last_dispatched_at" timestamp with time zone DEFAULT now() NOT NULL;

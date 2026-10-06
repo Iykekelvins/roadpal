@@ -3,7 +3,9 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import type { Database } from '../src/db/database.module.js';
 import * as schema from '../src/db/schema.js';
+import { findMatchingProviders } from '../src/matching/find-matching-providers.js';
 import { expireRequests, expireStaleOffers } from '../src/sweeps/expire.js';
+import { widenSearchRadius } from '../src/sweeps/widen.js';
 
 // Sweeps against the real database. Fixtures use their own phone prefix and are deleted afterwards.
 // Sweeps may also touch real dev rows that are genuinely due, so assertions only look at fixture ids.
@@ -23,11 +25,15 @@ async function user(role: 'driver' | 'provider') {
   return u!;
 }
 
-async function request(status: 'open' | 'matched', expiresAt: Date) {
+async function request(
+  status: 'open' | 'matched',
+  expiresAt: Date,
+  extra: { searchRadiusKm?: number; lastDispatchedAt?: Date } = {},
+) {
   const driver = await user('driver');
   const [r] = await db
     .insert(schema.requests)
-    .values({ driverId: driver.id, location: HERE, vehicleType: 'car', issueType: 'flat_tyre', status, expiresAt })
+    .values({ driverId: driver.id, location: HERE, vehicleType: 'car', issueType: 'flat_tyre', status, expiresAt, ...extra })
     .returning();
   return r!;
 }
@@ -100,3 +106,72 @@ describe('expireStaleOffers', () => {
     });
   });
 });
+
+describe('widenSearchRadius', () => {
+  const due = { lastDispatchedAt: minutesAgo(4) };
+
+  it('widens only open, unexpired, offer-less requests whose last dispatch is old enough', async () => {
+    const widenMe = await request('open', minutesFromNow(1), due);
+    const tooRecent = await request('open', minutesFromNow(5), { lastDispatchedAt: minutesAgo(1) });
+    const hasPendingOffer = await request('open', minutesFromNow(5), due);
+    await offerOn(hasPendingOffer.id, 'pending', minutesAgo(1));
+    const atMax = await request('open', minutesFromNow(5), { ...due, searchRadiusKm: 50 });
+    const overdue = await request('open', minutesAgo(1), due);
+    const matched = await request('matched', minutesFromNow(5), due);
+    const all = [widenMe, tooRecent, hasPendingOffer, atMax, overdue, matched];
+
+    const widened = (await widenSearchRadius(db)).filter((w) => all.some((r) => r.id === w.request.id));
+
+    expect(widened.map((w) => w.request.id)).toEqual([widenMe.id]);
+    const [w] = widened;
+    expect(w!.previousRadiusKm).toBe(10);
+    expect(w!.request.searchRadiusKm).toBe(20);
+    // The deadline moved out so newly reached providers have time (it was 1 minute away).
+    expect(w!.request.expiresAt.getTime()).toBeGreaterThan(Date.now() + 4.5 * 60_000);
+    expect(w!.request.lastDispatchedAt.getTime()).toBeGreaterThan(Date.now() - 60_000);
+  });
+
+  it('caps the radius at 50 km', async () => {
+    const r = await request('open', minutesFromNow(5), { ...due, searchRadiusKm: 40 });
+    const w = (await widenSearchRadius(db)).find((x) => x.request.id === r.id);
+    expect(w).toMatchObject({ previousRadiusKm: 40, request: { searchRadiusKm: 50 } });
+  });
+
+  it('two sweeps at once widen each request exactly one step', async () => {
+    const reqs = [await request('open', minutesFromNow(5), due), await request('open', minutesFromNow(5), due)];
+    const ids = new Set(reqs.map((r) => r.id));
+
+    const [a, b] = await Promise.all([widenSearchRadius(db), widenSearchRadius(db)]);
+    const reported = [...a, ...b].filter((w) => ids.has(w.request.id));
+
+    expect(reported.map((w) => w.request.id).sort()).toEqual([...ids].sort());
+    expect(reported.every((w) => w.request.searchRadiusKm === 20)).toBe(true);
+  });
+});
+
+describe('outer-ring matching after widening', () => {
+  it('notifies only providers beyond the previous radius', async () => {
+    const north = (km: number) => ({ lat: HERE.lat + km / 111.2, lng: HERE.lng });
+    const near = await user('provider');
+    const far = await user('provider');
+    for (const [p, km] of [[near, 5], [far, 15]] as const) {
+      await db.insert(schema.providerProfiles).values({
+        userId: p.id,
+        services: ['flat_tyre'],
+        serviceRadiusKm: 30,
+        isOnline: true,
+        lastLocation: north(km),
+        lastLocationAt: new Date(),
+      });
+    }
+
+    const criteria = { location: HERE, issueType: 'flat_tyre' as const, searchRadiusKm: 20 };
+    const everyone = (await findMatchingProviders(db, criteria)).map((m) => m.providerId);
+    const ring = (await findMatchingProviders(db, { ...criteria, outsideKm: 10 })).map((m) => m.providerId);
+
+    expect(everyone).toEqual(expect.arrayContaining([near.id, far.id]));
+    expect(ring).toContain(far.id);
+    expect(ring).not.toContain(near.id);
+  });
+});
+

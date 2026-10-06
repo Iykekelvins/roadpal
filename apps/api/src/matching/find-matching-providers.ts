@@ -16,6 +16,8 @@ export interface MatchCriteria {
   providerId?: string;
   /** Providers to leave out, e.g. the one who just cancelled this request's job. */
   excludeProviderIds?: string[];
+  /** Only providers beyond this distance: the new outer ring after the radius widens. */
+  outsideKm?: number;
 }
 
 export interface ProviderMatch {
@@ -26,7 +28,7 @@ export interface ProviderMatch {
 /** Online, recently-seen, not-busy providers who handle this issue and are in range, nearest first. */
 export async function findMatchingProviders(
   db: DbExecutor,
-  { location, issueType, searchRadiusKm, providerId, excludeProviderIds = [] }: MatchCriteria,
+  { location, issueType, searchRadiusKm, providerId, excludeProviderIds = [], outsideKm }: MatchCriteria,
 ): Promise<ProviderMatch[]> {
   const point = sql`${toEwkt(location)}::geography`;
   const distance = sql<number>`ST_Distance(${providerProfiles.lastLocation}, ${point})`;
@@ -53,6 +55,7 @@ export async function findMatchingProviders(
         // Per-row radius (how far this provider will travel): can't use the index, so it only
         // filters the rows the check above already narrowed down.
         sql`ST_DWithin(${providerProfiles.lastLocation}, ${point}, ${providerProfiles.serviceRadiusKm} * 1000)`,
+        outsideKm ? sql`NOT ST_DWithin(${providerProfiles.lastLocation}, ${point}, ${outsideKm * 1000})` : undefined,
       ),
     )
     .orderBy(distance)

@@ -227,27 +227,25 @@ export class JobsService {
           .update(requests)
           .set(
             reopen
-              ? { status: 'open', expiresAt: sql`now() + make_interval(mins => ${REQUEST_TTL_MINUTES})` }
+              ? {
+                  status: 'open',
+                  expiresAt: sql`now() + make_interval(mins => ${REQUEST_TTL_MINUTES})`,
+                  lastDispatchedAt: sql`now()`,
+                }
               : { status: 'cancelled' },
           )
           .where(eq(requests.id, current.requestId))
           .returning();
-        // Everyone who already had a job on this request (this cancellation and any earlier ones).
-        const previous = await tx
-          .select({ providerId: jobs.providerId })
-          .from(jobs)
-          .where(eq(jobs.requestId, current.requestId));
-        return { request: request!, previousProviderIds: previous.map((p) => p.providerId), reopen };
+        return { request: request!, reopen };
       }),
     );
 
     const [job] = await this.findViews(eq(jobs.id, jobId));
     this.emitToParticipants(job!, 'job:updated');
 
-    // Re-dispatch to everyone nearby except providers who already had a go at this request
-    // (their accepted offer blocks them from offering again anyway).
+    // Re-dispatch to everyone nearby (dispatchRequest leaves out providers who already had a go).
     const matchedProviderCount = outcome.reopen
-      ? await dispatchRequest(this.db, this.realtime, outcome.request, outcome.previousProviderIds)
+      ? await dispatchRequest(this.db, this.realtime, outcome.request)
       : 0;
 
     const { request } = outcome;
