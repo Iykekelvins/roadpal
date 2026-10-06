@@ -1,10 +1,28 @@
-import type { IssueType, LatLng } from '@repo/shared';
+import type { IssueType, LatLng, NearbyRequest } from '@repo/shared';
 import { and, eq, gt, sql } from 'drizzle-orm';
 import type { DbExecutor } from '../db/database.module.js';
 import { toEwkt } from '../db/geography.js';
 import { requests } from '../db/schema.js';
 
+type RequestRow = typeof requests.$inferSelect;
+
 const MAX_RESULTS = 20;
+
+/** The provider-facing view of a request; used by both the REST feed and the realtime push. */
+export function toNearbyRequest(
+  row: Pick<RequestRow, 'id' | 'vehicleType' | 'issueType' | 'note' | 'createdAt' | 'expiresAt'>,
+  distanceMeters: number,
+): NearbyRequest {
+  return {
+    id: row.id,
+    vehicleType: row.vehicleType,
+    issueType: row.issueType,
+    note: row.note,
+    distanceMeters: Math.round(distanceMeters),
+    createdAt: row.createdAt.toISOString(),
+    expiresAt: row.expiresAt.toISOString(),
+  };
+}
 
 export interface ProviderCriteria {
   location: LatLng;
@@ -19,7 +37,7 @@ export interface ProviderCriteria {
 export async function findNearbyRequests(
   db: DbExecutor,
   { location, services, serviceRadiusKm }: ProviderCriteria,
-) {
+): Promise<NearbyRequest[]> {
   const point = sql`${toEwkt(location)}::geography`;
   const distance = sql<number>`ST_Distance(${requests.location}, ${point})`;
 
@@ -49,5 +67,5 @@ export async function findNearbyRequests(
     .orderBy(distance)
     .limit(MAX_RESULTS);
 
-  return rows.map((row) => ({ ...row, distanceMeters: Math.round(Number(row.distanceMeters)) }));
+  return rows.map((row) => toNearbyRequest(row, Number(row.distanceMeters)));
 }

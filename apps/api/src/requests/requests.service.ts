@@ -5,10 +5,15 @@ import { isUniqueViolation } from '../common/db-errors.js';
 import { DB, type Database } from '../db/database.module.js';
 import { requests } from '../db/schema.js';
 import { findMatchingProviders } from '../matching/find-matching-providers.js';
+import { toNearbyRequest } from '../matching/find-nearby-requests.js';
+import { RealtimeGateway } from '../realtime/realtime.gateway.js';
 
 @Injectable()
 export class RequestsService {
-  constructor(@Inject(DB) private readonly db: Database) {}
+  constructor(
+    @Inject(DB) private readonly db: Database,
+    private readonly realtime: RealtimeGateway,
+  ) {}
 
   async create(driverId: string, input: CreateRequestInput) {
     try {
@@ -20,8 +25,14 @@ export class RequestsService {
           expiresAt: sql`now() + make_interval(mins => ${REQUEST_TTL_MINUTES})`,
         })
         .returning();
-      // Phase 5 will notify these providers in real time; for now the driver sees how many there are.
       const matches = await findMatchingProviders(this.db, request!);
+
+      // Pushed only after the insert succeeded. Fire-and-forget: providers who aren't connected
+      // pick it up from the nearby-requests feed when they reconnect.
+      for (const match of matches) {
+        this.realtime.emitToUser(match.providerId, 'request:new', toNearbyRequest(request!, match.distanceMeters));
+      }
+
       return { ...request!, matchedProviderCount: matches.length };
     } catch (error) {
       // The partial unique index is the source of truth, so this holds even for simultaneous taps.
