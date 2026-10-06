@@ -8,6 +8,7 @@ import * as schema from '../src/db/schema.js';
 import { JobsService } from '../src/jobs/jobs.service.js';
 import { OffersService } from '../src/offers/offers.service.js';
 import { RatingsService } from '../src/ratings/ratings.service.js';
+import { RequestsService } from '../src/requests/requests.service.js';
 import type { RealtimeGateway } from '../src/realtime/realtime.gateway.js';
 
 // Concurrency tests: races need separate transactions on separate connections, so these run the
@@ -16,10 +17,14 @@ import type { RealtimeGateway } from '../src/realtime/realtime.gateway.js';
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 10 });
 const db: Database = drizzle({ client: pool, schema, casing: 'snake_case' });
 
-const realtime = { emitToUser: () => undefined } as unknown as RealtimeGateway;
+const emitted: { userId: string; event: string; payload: unknown }[] = [];
+const realtime = {
+  emitToUser: (userId: string, event: string, payload: unknown) => void emitted.push({ userId, event, payload }),
+} as unknown as RealtimeGateway;
 const offersService = new OffersService(db, realtime);
 const jobsService = new JobsService(db, realtime);
 const ratingsService = new RatingsService(db);
+const requestsService = new RequestsService(db, realtime);
 
 // Fixtures live near Kano, far from any dev data, under a phone prefix used only by this file.
 const PHONE_PREFIX = '+2347099';
@@ -261,4 +266,63 @@ describe('ratings under concurrency', () => {
     const [result] = await Promise.allSettled([ratingsService.rate({ id: driver.id, role: 'driver' }, job.id, { score: 5 })]);
     expect(errorCode(result!)).toBe('JOB_NOT_COMPLETED');
   }, 120_000);
+});
+
+describe('cancelling a request', () => {
+  const offerStatuses = async (requestId: string) =>
+    (await db.select({ status: schema.offers.status }).from(schema.offers).where(eq(schema.offers.requestId, requestId)))
+      .map((o) => o.status)
+      .sort();
+
+  it('declines every pending offer and tells those providers', async () => {
+    const driver = await createDriver();
+    const [p1, p2] = [await createProvider(), await createProvider()];
+    const request = await createRequest(driver.id);
+    const [o1, o2] = [await offer(p1.id, request.id), await offer(p2.id, request.id)];
+
+    const cancelled = await requestsService.cancel(driver.id, request.id);
+
+    expect(cancelled.status).toBe('cancelled');
+    expect(await offerStatuses(request.id)).toEqual(['rejected', 'rejected']);
+    const told = emitted.filter((e) => e.event === 'offer:rejected' && (e.payload as { requestId: string }).requestId === request.id);
+    expect(told.map((e) => e.userId).sort()).toEqual([p1.id, p2.id].sort());
+    expect(told.map((e) => (e.payload as { offerId: string }).offerId).sort()).toEqual([o1.id, o2.id].sort());
+  });
+
+  it('only the owner can cancel, and only once', async () => {
+    const [driver, stranger] = [await createDriver(), await createDriver()];
+    const request = await createRequest(driver.id);
+
+    const [byStranger] = await Promise.allSettled([requestsService.cancel(stranger.id, request.id)]);
+    expect(errorCode(byStranger!)).toBe(404);
+    await requestsService.cancel(driver.id, request.id);
+    const [again] = await Promise.allSettled([requestsService.cancel(driver.id, request.id)]);
+    expect(errorCode(again!)).toBe('REQUEST_NOT_OPEN');
+  });
+
+  it('cancel and accept at the same time: exactly one wins, and the data agrees with it', async () => {
+    for (let round = 0; round < 3; round++) {
+      const driver = await createDriver();
+      const provider = await createProvider();
+      const request = await createRequest(driver.id);
+      const o = await offer(provider.id, request.id);
+
+      const [cancel, accept] = await Promise.allSettled([
+        requestsService.cancel(driver.id, request.id),
+        jobsService.acceptOffer(driver.id, o.id),
+      ]);
+
+      const codes = [errorCode(cancel!), errorCode(accept!)];
+      expect(codes.filter((c) => c === 'OK')).toHaveLength(1);
+      expect(codes.find((c) => c !== 'OK')).toBe('REQUEST_NOT_OPEN');
+
+      const [row] = await db.select().from(schema.requests).where(eq(schema.requests.id, request.id));
+      const jobs = await db.select().from(schema.jobs).where(eq(schema.jobs.requestId, request.id));
+      if (codes[0] === 'OK') {
+        expect([row!.status, jobs.length, await offerStatuses(request.id)]).toEqual(['cancelled', 0, ['rejected']]);
+      } else {
+        expect([row!.status, jobs.length, await offerStatuses(request.id)]).toEqual(['matched', 1, ['accepted']]);
+      }
+    }
+  });
 });

@@ -11,6 +11,14 @@ const EnvSchema = z.object({
   // Path the browser sees for the auth endpoints (the web app proxies /api/* to this API), so the
   // refresh cookie is only sent to them.
   REFRESH_COOKIE_PATH: z.string().startsWith('/').default('/api/auth'),
+  // Sites allowed to open a Socket.IO connection (comma-separated). REST doesn't need this: the web
+  // app proxies /api/* on its own origin. Sockets connect directly, and Socket.IO's HTTP polling
+  // fallback is a cross-origin request.
+  WEB_ORIGINS: z
+    .string()
+    .default('http://localhost:3001')
+    .transform((v) => v.split(',').map((o) => o.trim()).filter(Boolean))
+    .pipe(z.array(z.url()).min(1)),
   // Background sweeps (expiry, radius widening, cleanup). Can be turned off, e.g. for local debugging.
   SWEEPS_ENABLED: z
     .enum(['true', 'false'])

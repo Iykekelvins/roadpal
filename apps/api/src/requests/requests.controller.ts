@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post } from '@nestjs/common';
 import { CreateRequestSchema, type CreateRequestInput } from '@repo/shared';
 import { CurrentUser, Roles, type AuthUser } from '../auth/decorators.js';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
@@ -26,5 +26,12 @@ export class RequestsController {
   @Get(':id')
   findOne(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.requests.findOwned(user.id, id);
+  }
+
+  // Only while still open. Once an offer is accepted it's a job, cancelled via POST /jobs/:id/cancel.
+  @Post(':id/cancel')
+  @HttpCode(200)
+  cancel(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.requests.cancel(user.id, id);
   }
 }
