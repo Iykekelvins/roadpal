@@ -9,10 +9,15 @@ import { RolesGuard } from './roles.guard.js';
 const jwt = new JwtService({ secret: 'test-secret-that-is-long-enough-1234567890' });
 
 // A minimal stand-in for the request context Nest passes to guards.
-function contextFor(request: Record<string, unknown>, metadata: Record<string, unknown> = {}) {
+function contextFor(
+  request: Record<string, unknown>,
+  metadata: Record<string, unknown> = {},
+  type: 'http' | 'ws' = 'http',
+) {
   const handler = () => undefined;
   for (const [key, value] of Object.entries(metadata)) Reflect.defineMetadata(key, value, handler);
   return {
+    getType: () => type,
     getHandler: () => handler,
     getClass: () => class {},
     switchToHttp: () => ({ getRequest: () => request }),
@@ -40,6 +45,10 @@ describe('AuthGuard', () => {
     const expired = await jwt.signAsync({ sub: 'u1', role: 'driver' }, { expiresIn: -1 });
     const request = { headers: { authorization: `Bearer ${expired}` } };
     await expect(guard.canActivate(contextFor(request))).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('leaves socket contexts alone (they authenticate at the handshake)', async () => {
+    await expect(guard.canActivate(contextFor({}, {}, 'ws'))).resolves.toBe(true);
   });
 
   it('attaches the user for a valid token', async () => {

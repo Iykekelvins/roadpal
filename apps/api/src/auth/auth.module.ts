@@ -20,6 +20,7 @@ import { RolesGuard } from './roles.guard.js';
     }),
   ],
   controllers: [AuthController],
+  exports: [JwtModule],
   providers: [
     AuthService,
     // Global guards run in registration order: authenticate first, then check roles.

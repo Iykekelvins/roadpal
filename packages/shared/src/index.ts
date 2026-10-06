@@ -4,3 +4,4 @@ export * from './geo';
 export * from './users';
 export * from './providers';
 export * from './requests';
+export * from './realtime';

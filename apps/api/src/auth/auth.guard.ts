@@ -13,6 +13,9 @@ export class AuthGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    // Sockets authenticate once at the handshake (see RealtimeGateway), not per message.
+    if (context.getType() !== 'http') return true;
+
     // Handler-level metadata wins over controller-level.
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
