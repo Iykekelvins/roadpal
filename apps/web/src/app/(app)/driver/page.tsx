@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import type { JobView } from "@repo/shared";
-import { getActiveJob } from "@/lib/jobs";
+import { getActiveJob, rateJob } from "@/lib/jobs";
 import { getActiveRequest, type DriverRequest } from "@/lib/requests";
 import { useSession, useSocketEvent } from "../_components/session";
-import { JobSummary } from "./_components/job-summary";
+import { JobDone, JobScreen } from "./_components/job-screen";
 import { RequestForm } from "./_components/request-form";
 import { Searching } from "./_components/searching";
 
@@ -13,7 +13,8 @@ type View =
   | { kind: "loading"; failed?: boolean }
   | { kind: "idle" } // nothing active: show the request form
   | { kind: "searching"; request: DriverRequest }
-  | { kind: "job"; job: JobView };
+  | { kind: "job"; job: JobView }
+  | { kind: "done"; job: JobView }; // just completed: pay and rate
 
 /** What the driver has going on right now, according to the server. A job outranks a request. */
 async function loadView(): Promise<View> {
@@ -54,7 +55,9 @@ export default function DriverHomePage() {
 
   useSocketEvent("job:updated", (job) => {
     if (view.kind !== "job" || view.job.id !== job.id) return;
-    if (job.status === "cancelled") {
+    if (job.status === "completed") {
+      setView({ kind: "done", job });
+    } else if (job.status === "cancelled") {
       // If the vulcanizer cancelled, the server reopened the request and is asking others nearby.
       setNotice(job.cancelledBy === "provider" ? "Your vulcanizer cancelled. We’re asking others nearby." : null);
       reload();
@@ -106,7 +109,28 @@ export default function DriverHomePage() {
       );
       break;
     case "job":
-      screen = <JobSummary job={view.job} />;
+      screen = (
+        <JobScreen
+          job={view.job}
+          onCancelled={(reopened) => {
+            setNotice(reopened ? "Job cancelled. We’re asking other vulcanizers nearby." : null);
+            reload();
+          }}
+        />
+      );
+      break;
+    case "done":
+      screen = (
+        <JobDone
+          job={view.job}
+          onSubmit={async (score, comment) => {
+            await rateJob(view.job.id, { score, comment: comment || undefined });
+            setNotice("Thanks for rating. It helps other drivers choose.");
+            setView({ kind: "idle" });
+          }}
+          onSkip={() => setView({ kind: "idle" })}
+        />
+      );
       break;
   }
 
