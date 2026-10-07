@@ -22,6 +22,7 @@
     "check-types": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:migrate:deploy": "node scripts/migrate.mjs",
     "db:studio": "drizzle-kit studio",
     "simulate": "node --env-file=.env scripts/simulate-vulcanizer.mjs"
   },

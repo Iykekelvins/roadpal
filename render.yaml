@@ -16,7 +16,7 @@ services:
     buildCommand: >-
       corepack pnpm install --frozen-lockfile --prod=false &&
       corepack pnpm --filter "@repo/api..." run build &&
-      corepack pnpm --filter @repo/api db:migrate
+      corepack pnpm --filter @repo/api db:migrate:deploy
     startCommand: node apps/api/dist/main.js
     # Database-free check: Render's pings must not keep Neon awake (see /health/live).
     healthCheckPath: /health/live
