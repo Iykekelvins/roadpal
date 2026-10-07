@@ -15,6 +15,8 @@ const jakarta = Plus_Jakarta_Sans({
 export const metadata: Metadata = {
   // Link previews need absolute image URLs; this is the public address they resolve against.
   metadataBase: new URL("https://roadpal.iykekelvins.dev"),
+  authors: [{ name: "Kelvin Ochubili", url: "https://iykekelvins.dev" }],
+  creator: "Kelvin Ochubili",
   // og:image / twitter:image come from opengraph-image.tsx; these fill in the rest of the card.
   openGraph: {
     siteName: "RoadPal",
