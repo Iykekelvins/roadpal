@@ -22,6 +22,7 @@ import type { Env } from '../config/env.js';
 import { DB, type Database } from '../db/database.module.js';
 import { otpCodes, refreshTokens, smsDailyCounts, users } from '../db/schema.js';
 import { SmsSender } from '../sms/sms-sender.js';
+import { ActivityService } from '../activity/activity.service.js';
 import { ACCESS_TOKEN_TTL_SECONDS, type AccessTokenPayload } from './access-token.js';
 import { checkOtp, generateOtp, hashOtp, OTP_TTL_SECONDS } from './otp.js';
 import {
@@ -50,6 +51,7 @@ export class AuthService {
     private readonly config: ConfigService<Env, true>,
     private readonly jwt: JwtService,
     private readonly sms: SmsSender,
+    private readonly activity: ActivityService,
   ) {}
 
   async requestOtp(phone: string) {
@@ -138,6 +140,7 @@ export class AuthService {
       throw new ServiceUnavailableException('We couldn’t send your code. Please try again in a moment.');
     }
 
+    this.activity.touch(); // someone is logging in: the app is in use
     return { expiresInSeconds: OTP_TTL_SECONDS, ...(this.sms.showsCode && { demoCode: code }) };
   }
 
@@ -208,6 +211,7 @@ export class AuthService {
       ? { user: existing, isNewUser: false }
       : await this.createUser(phone, role!);
 
+    this.activity.touch();
     return { ...(await this.issueTokens(user)), user, isNewUser };
   }
 
@@ -250,6 +254,7 @@ export class AuthService {
     const [user] = await this.db.select().from(users).where(eq(users.id, session.userId));
     if (!user) throw new UnauthorizedException('Session expired. Log in again.');
 
+    this.activity.touch(); // a returning user's app refreshing its session
     return this.issueTokens(user, session.familyId);
   }
 

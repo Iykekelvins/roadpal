@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Interval } from '@nestjs/schedule';
+import { ActivityService } from '../activity/activity.service.js';
 import type { Env } from '../config/env.js';
 import { DB, type Database } from '../db/database.module.js';
 import { dispatchRequest } from '../matching/dispatch-request.js';
@@ -29,11 +30,26 @@ export class SweeperService {
     @Inject(DB) private readonly db: Database,
     private readonly realtime: RealtimeGateway,
     private readonly config: ConfigService<Env, true>,
+    private readonly activity: ActivityService,
   ) {}
+
+  private idle = false;
+
+  /**
+   * Nobody has used the app for a while: skip the database entirely so Neon can suspend. Safe,
+   * because every deadline a sweep acts on falls inside the activity window (see IDLE_AFTER_MS),
+   * and sweeps compare timestamps, so the first tick after traffic resumes catches up on anything due.
+   */
+  private shouldSkip() {
+    const idle = !this.activity.isActive();
+    if (idle !== this.idle) this.logger.log(idle ? 'No recent activity: pausing sweeps' : 'Activity again: resuming sweeps');
+    this.idle = idle;
+    return idle;
+  }
 
   @Interval(SWEEP_INTERVAL_MS)
   async tick() {
-    if (!this.config.get('SWEEPS_ENABLED', { infer: true })) return;
+    if (!this.config.get('SWEEPS_ENABLED', { infer: true }) || this.shouldSkip()) return;
     // On a slow network a sweep can outlast the interval; don't stack runs on top of each other.
     if (this.running) return;
     this.running = true;
@@ -48,7 +64,8 @@ export class SweeperService {
 
   @Interval(CLEANUP_INTERVAL_MS)
   async cleanup() {
-    if (!this.config.get('SWEEPS_ENABLED', { infer: true }) || this.cleaning) return;
+    // Not urgent: if the app is idle, this simply happens during the next active hour.
+    if (!this.config.get('SWEEPS_ENABLED', { infer: true }) || this.cleaning || !this.activity.isActive()) return;
     this.cleaning = true;
     try {
       const deleted = await cleanupExpiredAuthData(this.db);

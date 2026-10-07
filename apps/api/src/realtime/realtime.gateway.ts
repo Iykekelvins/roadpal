@@ -20,6 +20,7 @@ import {
 import type { Server, Socket } from 'socket.io';
 import type { AccessTokenPayload } from '../auth/access-token.js';
 import type { AuthUser } from '../auth/decorators.js';
+import { ActivityService } from '../activity/activity.service.js';
 import { DB, type Database } from '../db/database.module.js';
 import { recordLiveLocation } from './record-live-location.js';
 
@@ -43,6 +44,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   constructor(
     private readonly jwt: JwtService,
     @Inject(DB) private readonly db: Database,
+    private readonly activity: ActivityService,
   ) {}
 
   afterInit(server: AppServer) {
@@ -67,6 +69,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   }
 
   async handleConnection(socket: AppSocket) {
+    this.activity.touch();
     await socket.join(userRoom(socket.data.user.id));
     this.logger.debug(`connected ${socket.data.user.role} ${socket.data.user.id}`);
   }
@@ -81,6 +84,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
    */
   @SubscribeMessage('location:update')
   async onLocationUpdate(@ConnectedSocket() socket: AppSocket, @MessageBody() body: unknown): Promise<LocationAck> {
+    this.activity.touch(); // a vulcanizer on the move is real use, even with no HTTP traffic
     if (socket.data.user.role !== 'provider') return { error: 'NOT_ALLOWED' };
     const parsed = LatLngSchema.safeParse(body);
     if (!parsed.success) return { error: 'INVALID_LOCATION' };

@@ -1,6 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
+import { ActivityService } from '../activity/activity.service.js';
 import type { AccessTokenPayload } from './access-token.js';
 import { IS_PUBLIC_KEY, type AuthUser } from './decorators.js';
 
@@ -10,6 +11,7 @@ export class AuthGuard implements CanActivate {
   constructor(
     private readonly jwt: JwtService,
     private readonly reflector: Reflector,
+    private readonly activity: ActivityService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -30,6 +32,9 @@ export class AuthGuard implements CanActivate {
     try {
       const payload = await this.jwt.verifyAsync<AccessTokenPayload>(token);
       request.user = { id: payload.sub, role: payload.role } satisfies AuthUser;
+      // Only signed-in use keeps the background sweeps running: anonymous scans and health checks
+      // on a public URL must not keep the database awake.
+      this.activity.touch();
     } catch {
       throw new UnauthorizedException('Invalid or expired access token');
     }

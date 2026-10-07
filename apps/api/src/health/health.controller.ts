@@ -8,6 +8,15 @@ import { Public } from '../auth/decorators.js';
 export class HealthController {
   constructor(@Inject(DB) private readonly db: Database) {}
 
+  /**
+   * Liveness for the hosting platform's health checks: answers without touching the database, so
+   * frequent pings don't keep Neon awake (and use up its free compute hours).
+   */
+  @Get('live')
+  live() {
+    return { status: 'ok' };
+  }
+
   @Get()
   async check() {
     const start = Date.now();
