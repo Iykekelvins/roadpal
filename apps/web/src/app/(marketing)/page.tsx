@@ -124,7 +124,7 @@ export default function LandingPage() {
             Share where you are. Vulcanizers nearby send offers with their price and arrival time. Pick
             one, watch them come to you on the map, and pay when the job is done.
           </p>
-          <div className="flex flex-col gap-3 motion-safe:animate-rise sm:flex-row" style={entrance(HERO_TIMELINE.buttons)}>
+          <div className="flex flex-col gap-3 motion-safe:animate-rise sm:flex-row sm:flex-wrap" style={entrance(HERO_TIMELINE.buttons)}>
             <Link href="/login?as=driver" className={buttonStyles({ variant: "signal" })}>
               Get help now
             </Link>

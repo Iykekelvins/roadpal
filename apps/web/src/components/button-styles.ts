@@ -1,8 +1,9 @@
 // Shared button look for <button> and <Link> alike. Hover only applies on devices that can hover
 // (Tailwind v4 default), press feedback is a small scale, and keyboard focus gets a visible ring.
+// Labels never wrap: the heights are fixed, so a second line would spill out of the button.
 
 const base =
-  "inline-flex items-center justify-center gap-2 rounded-2xl font-extrabold select-none " +
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-2xl font-extrabold select-none " +
   "transition-[background-color,border-color,color,transform] duration-150 ease-out " +
   "active:scale-[0.97] motion-reduce:transition-none motion-reduce:active:scale-100 " +
   "disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100 " +
