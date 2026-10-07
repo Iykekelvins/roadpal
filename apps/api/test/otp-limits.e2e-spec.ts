@@ -9,6 +9,7 @@ import type { App } from 'supertest/types.js';
 import { AppModule } from '../src/app.module.js';
 import type { Database } from '../src/db/database.module.js';
 import * as schema from '../src/db/schema.js';
+import { SmsSender } from '../src/sms/sms-sender.js';
 
 // Login-code rate limits, through the real HTTP API. Time is simulated by moving the stored
 // timestamps back, so the tests don't have to wait out real cooldowns.
@@ -136,5 +137,34 @@ describe('per-IP burst limit', () => {
     expect(statuses.every((s) => s === 200)).toBe(true);
     const blocked = await askForCode(app, nextPhone()).expect(429);
     expect(blocked.body.message).toBe('Too many attempts from your network. Wait a minute and try again.');
+  });
+});
+
+describe('SMS delivery', () => {
+  it('in demo mode, returns the code so the app can show it', async () => {
+    const app = await createApp();
+    await resetDailyCount();
+    const res = await askForCode(app, nextPhone()).expect(200);
+    expect(res.body.demoCode).toMatch(/^\d{6}$/);
+    await app.close();
+  });
+
+  it('when sending fails: a clear 503, and the person can retry at once (no cooldown)', async () => {
+    const failing = { showsCode: false, sendLoginCode: () => Promise.reject(new Error('provider down')) };
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(SmsSender)
+      .useValue(failing)
+      .compile();
+    const app = moduleRef.createNestApplication<INestApplication<App>>();
+    await app.init();
+    await resetDailyCount();
+    const phone = nextPhone();
+
+    const first = await askForCode(app, phone).expect(503);
+    expect(first.body.message).toBe('We couldn’t send your code. Please try again in a moment.');
+    expect(first.body).not.toHaveProperty('demoCode');
+    // Retrying straight away hits the provider again (503), not the 60s cooldown (429).
+    await askForCode(app, phone).expect(503);
+    await app.close();
   });
 });

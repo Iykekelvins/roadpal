@@ -5,6 +5,7 @@ import {
   Inject,
   Injectable,
   Logger,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -20,6 +21,7 @@ import { and, eq, gt, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import type { Env } from '../config/env.js';
 import { DB, type Database } from '../db/database.module.js';
 import { otpCodes, refreshTokens, smsDailyCounts, users } from '../db/schema.js';
+import { SmsSender } from '../sms/sms-sender.js';
 import { ACCESS_TOKEN_TTL_SECONDS, type AccessTokenPayload } from './access-token.js';
 import { checkOtp, generateOtp, hashOtp, OTP_TTL_SECONDS } from './otp.js';
 import {
@@ -47,6 +49,7 @@ export class AuthService {
     @Inject(DB) private readonly db: Database,
     private readonly config: ConfigService<Env, true>,
     private readonly jwt: JwtService,
+    private readonly sms: SmsSender,
   ) {}
 
   async requestOtp(phone: string) {
@@ -122,11 +125,20 @@ export class AuthService {
       );
     }
 
-    // OTP delivery is mocked: no SMS provider yet. Never expose the code outside development.
-    const isDev = this.config.get('NODE_ENV', { infer: true }) === 'development';
-    if (isDev) this.logger.log(`OTP for ${phone}: ${code}`);
+    // Sent after the transaction commits: an SMS provider call must never hold database locks.
+    try {
+      await this.sms.sendLoginCode(phone, code);
+    } catch {
+      // Not the user's fault: lift the cooldown so they can retry straight away. The send still
+      // counts towards the hourly and daily limits (it may even have been delivered).
+      await this.db
+        .update(otpCodes)
+        .set({ createdAt: sql`now() - make_interval(secs => ${OTP_RESEND_COOLDOWN_SECONDS})` })
+        .where(eq(otpCodes.phone, phone));
+      throw new ServiceUnavailableException('We couldn’t send your code. Please try again in a moment.');
+    }
 
-    return { expiresInSeconds: OTP_TTL_SECONDS, ...(isDev && { devCode: code }) };
+    return { expiresInSeconds: OTP_TTL_SECONDS, ...(this.sms.showsCode && { demoCode: code }) };
   }
 
   /** Why this number is limited, as a wait time and a message the app can show as-is. */

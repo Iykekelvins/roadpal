@@ -29,6 +29,18 @@ const EnvSchema = z.object({
     .enum(['true', 'false'])
     .default('true')
     .transform((v) => v === 'true'),
+  // How login codes reach people. demo: shown in the app, nothing sent (free, but anyone can log in
+  // as any number). termii: real SMS, needs the three TERMII_ settings below.
+  SMS_MODE: z.enum(['demo', 'termii']).default('demo'),
+  TERMII_API_KEY: z.string().min(1).optional(),
+  TERMII_BASE_URL: z.url().optional(), // account-specific, from the Termii dashboard
+  TERMII_SENDER_ID: z.string().min(3).max(11).default('RoadPal'), // must be approved by Termii
+}).superRefine((env, ctx) => {
+  if (env.SMS_MODE === 'termii') {
+    for (const key of ['TERMII_API_KEY', 'TERMII_BASE_URL'] as const) {
+      if (!env[key]) ctx.addIssue({ code: 'custom', path: [key], message: 'Required when SMS_MODE=termii' });
+    }
+  }
 });
 
 export type Env = z.infer<typeof EnvSchema>;

@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { OTP_RESEND_COOLDOWN_SECONDS, PhoneSchema, type UserRole } from "@repo/shared";
 import { buttonStyles } from "@/components/button-styles";
 import { ApiError, NetworkError } from "@/lib/api";
 import { formatPhone } from "@/lib/format";
-import { HOME, requestOtp, restoreSession, verifyOtp } from "@/lib/auth";
+import { HOME, readRememberedPhone, rememberPhone, requestOtp, restoreSession, verifyOtp } from "@/lib/auth";
 
 type Step = "phone" | "code" | "role";
 type Problem = { kind: "error" | "info"; message: string } | null;
@@ -28,6 +28,14 @@ function toProblem(error: unknown): Problem {
   return { kind: "error", message: "Something went wrong. Try again." };
 }
 
+// Re-reads when storage changes (another tab, or "Use a different number"). On the server there's
+// no storage: it renders the plain form, and React swaps in the remembered number after hydration.
+const subscribeToStorage = (onChange: () => void) => {
+  window.addEventListener("storage", onChange);
+  return () => window.removeEventListener("storage", onChange);
+};
+const useRememberedPhone = () => useSyncExternalStore(subscribeToStorage, readRememberedPhone, () => null);
+
 export function LoginFlow({ suggestedRole }: { suggestedRole?: UserRole }) {
   const router = useRouter();
   const [step, setStep] = useState<Step>("phone");
@@ -35,7 +43,9 @@ export function LoginFlow({ suggestedRole }: { suggestedRole?: UserRole }) {
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [role, setRole] = useState<UserRole | undefined>(suggestedRole);
-  const [devCode, setDevCode] = useState<string>();
+  const [demoCode, setDemoCode] = useState<string>();
+  const remembered = useRememberedPhone();
+  const [otherNumber, setOtherNumber] = useState(false);
   const [resendIn, setResendIn] = useState(0);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem>(null);
@@ -75,7 +85,7 @@ export function LoginFlow({ suggestedRole }: { suggestedRole?: UserRole }) {
       try {
         const sent = await requestOtp(target);
         setPhone(target);
-        setDevCode(sent.devCode);
+        setDemoCode(sent.demoCode);
         setCode("");
         setResendIn(OTP_RESEND_COOLDOWN_SECONDS);
         setStep("code");
@@ -83,7 +93,7 @@ export function LoginFlow({ suggestedRole }: { suggestedRole?: UserRole }) {
         const wait = error instanceof ApiError && error.status === 429 ? error.retryAfterSeconds : undefined;
         // Within the cooldown, the code sent moments ago is still valid: go and enter it.
         if (wait !== undefined && error instanceof ApiError && error.code === "OTP_RATE_LIMITED" && wait <= OTP_RESEND_COOLDOWN_SECONDS) {
-          if (target !== phone) setDevCode(undefined);
+          if (target !== phone) setDemoCode(undefined);
           setPhone(target);
           setResendIn(wait);
           setStep("code");
@@ -110,6 +120,7 @@ export function LoginFlow({ suggestedRole }: { suggestedRole?: UserRole }) {
     run(async () => {
       try {
         const { user } = await verifyOtp(phone, value, chosenRole);
+        rememberPhone(user.phone);
         router.replace(HOME[user.role]);
       } catch (error) {
         // New number: the code was right, but we need to know who they are before creating the account.
@@ -134,7 +145,39 @@ export function LoginFlow({ suggestedRole }: { suggestedRole?: UserRole }) {
 
   return (
     <div className="flex flex-col gap-8">
-      {step === "phone" && (
+      {step === "phone" && remembered && !otherNumber && (
+        <div className="flex flex-col gap-6">
+          <Heading
+            title="Welcome back"
+            subtitle={
+              <>
+                We’ll text a 6‑digit code to <strong className="font-bold text-text">{formatPhone(remembered)}</strong>.
+              </>
+            }
+          />
+          <ProblemMessage problem={problem} />
+          <button
+            type="button"
+            onClick={() => void sendCode(remembered)}
+            disabled={busy}
+            className={buttonStyles({ variant: "primary", className: "w-full" })}
+          >
+            {busy ? "Sending code…" : "Send code"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setProblem(null);
+              setOtherNumber(true);
+            }}
+            className="self-center text-sm font-bold text-primary underline-offset-4 hover:underline"
+          >
+            Use a different number
+          </button>
+        </div>
+      )}
+
+      {step === "phone" && (!remembered || otherNumber) && (
         <form onSubmit={submitPhone} noValidate className="flex flex-col gap-6">
           <Heading title="Log in or sign up" subtitle="Enter your phone number. We’ll text you a 6‑digit code." />
           <label className="flex flex-col gap-2">
@@ -179,6 +222,7 @@ export function LoginFlow({ suggestedRole }: { suggestedRole?: UserRole }) {
                   type="button"
                   onClick={() => {
                     setProblem(null);
+                    setOtherNumber(true); // they want a different number, not "Welcome back" again
                     setStep("phone");
                   }}
                   className="font-bold text-primary underline-offset-4 hover:underline"
@@ -203,12 +247,12 @@ export function LoginFlow({ suggestedRole }: { suggestedRole?: UserRole }) {
             />
           </label>
 
-          {devCode && (
+          {demoCode && (
             <p className="flex items-center justify-between gap-3 rounded-2xl bg-signal-soft px-4 py-3 text-sm text-on-signal-soft">
               <span>
-                Dev mode, no SMS sent. Code: <strong className="font-extrabold tracking-widest">{devCode}</strong>
+                Demo mode: no SMS is sent. Your code: <strong className="font-extrabold tracking-widest">{demoCode}</strong>
               </span>
-              <button type="button" onClick={() => onCodeChange(devCode)} className="font-extrabold underline underline-offset-4">
+              <button type="button" onClick={() => onCodeChange(demoCode)} className="font-extrabold underline underline-offset-4">
                 Use it
               </button>
             </p>

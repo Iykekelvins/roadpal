@@ -11,8 +11,8 @@ export interface Me {
 
 export interface OtpSent {
   expiresInSeconds: number;
-  /** Only in development: the API has no SMS sender yet, so it hands the code back. */
-  devCode?: string;
+  /** Demo mode only (SMS_MODE=demo): no SMS is sent, so the API hands the code back to show on screen. */
+  demoCode?: string;
 }
 
 export function requestOtp(phone: string) {
@@ -48,4 +48,25 @@ export const HOME: Record<UserRole, string> = { driver: "/driver", provider: "/p
 
 export function updateMe(input: UpdateMeInput) {
   return api<Me>("/users/me", { method: "PATCH", body: JSON.stringify(input) });
+}
+
+// The last number that logged in on this device, so the login screen can say "Welcome back".
+// Only the number: the session itself stays in the httpOnly cookie. Storage can be unavailable
+// (private mode, blocked site data), so every access is guarded and failure just means a blank form.
+const LAST_PHONE_KEY = "rp_last_phone";
+
+export function rememberPhone(phone: string | null) {
+  try {
+    if (phone) localStorage.setItem(LAST_PHONE_KEY, phone);
+    else localStorage.removeItem(LAST_PHONE_KEY);
+    window.dispatchEvent(new StorageEvent("storage", { key: LAST_PHONE_KEY }));
+  } catch {}
+}
+
+export function readRememberedPhone(): string | null {
+  try {
+    return localStorage.getItem(LAST_PHONE_KEY);
+  } catch {
+    return null;
+  }
 }

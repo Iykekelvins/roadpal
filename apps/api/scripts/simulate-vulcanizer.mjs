@@ -6,7 +6,7 @@
 //
 // It talks to the running API like a real app would (HTTP + Socket.IO). It reads the database
 // only to find where your request is, since a vulcanizer's API never reveals a driver's location.
-// It only works against a development API: logging in relies on the dev-only OTP code.
+// It only works with SMS_MODE=demo: logging in relies on the code being returned by the API.
 import { io } from 'socket.io-client';
 import pg from 'pg';
 
@@ -59,9 +59,9 @@ log(`Found request near ${request.lat.toFixed(4)}, ${request.lng.toFixed(4)} (${
 const north = (km) => ({ lat: request.lat + km / 111, lng: request.lng }); // ~111 km per degree of latitude
 const team = [];
 for (const v of VULCANIZERS) {
-  const { devCode } = await call('/auth/otp/request', { method: 'POST', body: { phone: v.phone } });
-  if (!devCode) throw new Error('No dev OTP code: is the API running in development?');
-  const { accessToken: token } = await call('/auth/otp/verify', { method: 'POST', body: { phone: v.phone, code: devCode, role: 'provider' } });
+  const { demoCode } = await call('/auth/otp/request', { method: 'POST', body: { phone: v.phone } });
+  if (!demoCode) throw new Error('No demo login code: is the API running with SMS_MODE=demo?');
+  const { accessToken: token } = await call('/auth/otp/verify', { method: 'POST', body: { phone: v.phone, code: demoCode, role: 'provider' } });
   await call('/users/me', { token, method: 'PATCH', body: { name: v.name } });
   await call('/providers/me/profile', {
     token,

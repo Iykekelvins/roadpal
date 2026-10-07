@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { ThrottlerModule } from '@nestjs/throttler';
 import type { Env } from '../config/env.js';
+import { SmsModule } from '../sms/sms.module.js';
 import { ACCESS_TOKEN_TTL_SECONDS } from './access-token.js';
 import { AuthController } from './auth.controller.js';
 import { AuthGuard } from './auth.guard.js';
@@ -12,6 +13,7 @@ import { RolesGuard } from './roles.guard.js';
 
 @Module({
   imports: [
+    SmsModule,
     // Per-IP burst limit for the login-code endpoints (applied with @UseGuards there, not globally).
     // Generous on purpose: Nigerian mobile networks put many users behind one shared IP (CGNAT).
     // The real limits are per phone number and per day, in the database (see AuthService).
