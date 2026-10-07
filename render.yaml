@@ -7,16 +7,16 @@ services:
     runtime: node
     plan: free
     region: frankfurt
-    # Corepack installs the exact pnpm version pinned in package.json ("packageManager").
+    # `corepack pnpm` runs the exact pnpm pinned in package.json ("packageManager"). Not
+    # `corepack enable`: that replaces /usr/bin/pnpm, which is read-only on Render (EROFS).
     # --prod=false: NODE_ENV=production would otherwise skip devDependencies, and the Nest build
     # tools are devDependencies. --filter "@repo/api...": build the API and what it depends on
     # (packages/shared) in order. Migrations run last, so a failed build never touches the database
     # (the free plan has no separate pre-deploy step).
     buildCommand: >-
-      corepack enable &&
-      pnpm install --frozen-lockfile --prod=false &&
-      pnpm --filter "@repo/api..." run build &&
-      pnpm --filter @repo/api db:migrate
+      corepack pnpm install --frozen-lockfile --prod=false &&
+      corepack pnpm --filter "@repo/api..." run build &&
+      corepack pnpm --filter @repo/api db:migrate
     startCommand: node apps/api/dist/main.js
     # Database-free check: Render's pings must not keep Neon awake (see /health/live).
     healthCheckPath: /health/live
