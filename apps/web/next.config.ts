@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 // The API's address, as seen from the Next.js server (never exposed to the browser).
-const API_URL = process.env.API_URL ?? "http://localhost:8000";
+const API_URL = (process.env.API_URL ?? "http://localhost:8000").trim(); // pasted values can carry spaces
 
 const nextConfig: NextConfig = {
   // The browser calls /api/* on this site and Next forwards it to the API. Keeping the API on the
