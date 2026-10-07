@@ -14,6 +14,7 @@ import { sql } from 'drizzle-orm';
 import {
   boolean,
   check,
+  date,
   index,
   integer,
   pgEnum,
@@ -53,6 +54,16 @@ export const otpCodes = pgTable('otp_codes', {
   expiresAt: timestamp({ withTimezone: true }).notNull(),
   attempts: integer().notNull().default(0),
   createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  // Rate limiting: codes sent to this number in the current hour-long window. Kept on this row
+  // (which outlives dead codes until cleanup), so burning a code can't reset the count.
+  sendCount: integer().notNull().default(1),
+  windowStartedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+});
+
+// App-wide budget: login codes sent per day (Lagos date). Caps what SMS can cost, whatever happens.
+export const smsDailyCounts = pgTable('sms_daily_counts', {
+  day: date().primaryKey(),
+  count: integer().notNull().default(0),
 });
 
 // Opaque refresh tokens (only the hash is stored). All tokens rotated from one login share a familyId.

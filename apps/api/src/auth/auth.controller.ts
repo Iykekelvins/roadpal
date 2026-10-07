@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, Post, Req, Res, UnauthorizedException } from '@nestjs/common';
+import { Body, Controller, HttpCode, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   REFRESH_TOKEN_COOKIE,
@@ -9,6 +9,7 @@ import {
   type RequestOtpInput,
   type VerifyOtpInput,
 } from '@repo/shared';
+import { ThrottlerGuard } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import type { Env } from '../config/env.js';
@@ -26,6 +27,7 @@ export class AuthController {
 
   @Post('otp/request')
   @HttpCode(200)
+  @UseGuards(ThrottlerGuard)
   requestOtp(@Body(new ZodValidationPipe(RequestOtpSchema)) body: RequestOtpInput) {
     return this.auth.requestOtp(body.phone);
   }
@@ -33,6 +35,7 @@ export class AuthController {
   // passthrough: we set a cookie on the response but still return the body the normal Nest way.
   @Post('otp/verify')
   @HttpCode(200)
+  @UseGuards(ThrottlerGuard)
   async verifyOtp(
     @Body(new ZodValidationPipe(VerifyOtpSchema)) body: VerifyOtpInput,
     @Req() req: Request,

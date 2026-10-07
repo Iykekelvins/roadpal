@@ -32,3 +32,13 @@ export type RefreshTokenInput = z.infer<typeof RefreshTokenSchema>;
 /** Send `X-Token-Transport: cookie` to receive the refresh token as an httpOnly cookie instead of in the body. */
 export const TOKEN_TRANSPORT_HEADER = 'x-token-transport';
 export const REFRESH_TOKEN_COOKIE = 'rp_refresh';
+
+/** Minimum wait between login codes for one phone number. */
+export const OTP_RESEND_COOLDOWN_SECONDS = 60;
+/** Most login codes one phone number can request per hour. */
+export const OTP_MAX_SENDS_PER_HOUR = 5;
+/**
+ * 429 error codes for code requests. The body also carries `retryAfterSeconds`.
+ * OTP_RATE_LIMITED: this number asked too often. OTP_DAILY_LIMIT: the app-wide daily budget is used up.
+ */
+export type OtpLimitCode = 'OTP_RATE_LIMITED' | 'OTP_DAILY_LIMIT';

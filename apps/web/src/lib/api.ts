@@ -19,6 +19,8 @@ export class ApiError extends Error {
     readonly code?: string,
     /** Per-field validation messages, e.g. { phone: ["Enter a valid Nigerian mobile number"] }. */
     readonly fieldErrors?: Record<string, string[]>,
+    /** On 429s: how long until trying again can work. */
+    readonly retryAfterSeconds?: number,
   ) {
     super(message);
   }
@@ -42,7 +44,7 @@ async function send(path: string, init: RequestInit = {}): Promise<Response> {
 async function toError(res: Response): Promise<ApiError> {
   const body = await res.json().catch(() => ({}));
   const message = Array.isArray(body.message) ? body.message.join(", ") : (body.message ?? "Something went wrong");
-  return new ApiError(res.status, message, body.code, body.errors);
+  return new ApiError(res.status, message, body.code, body.errors, body.retryAfterSeconds);
 }
 
 export interface Session {

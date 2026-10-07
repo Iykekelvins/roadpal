@@ -19,6 +19,11 @@ const EnvSchema = z.object({
     .default('http://localhost:3001')
     .transform((v) => v.split(',').map((o) => o.trim()).filter(Boolean))
     .pipe(z.array(z.url()).min(1)),
+  // App-wide cap on login codes per day (Lagos date). The hard ceiling on SMS spend: limit x price.
+  OTP_DAILY_LIMIT: z.coerce.number().int().positive().default(200),
+  // How many proxies sit in front of the API (e.g. Vercel's rewrite + Render's load balancer = 2).
+  // Lets req.ip be the real client from X-Forwarded-For. 0 locally: no proxy, trust nothing.
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
   // Background sweeps (expiry, radius widening, cleanup). Can be turned off, e.g. for local debugging.
   SWEEPS_ENABLED: z
     .enum(['true', 'false'])

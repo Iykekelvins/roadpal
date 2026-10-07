@@ -2,16 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { PhoneSchema, type UserRole } from "@repo/shared";
+import { OTP_RESEND_COOLDOWN_SECONDS, PhoneSchema, type UserRole } from "@repo/shared";
 import { buttonStyles } from "@/components/button-styles";
 import { ApiError, NetworkError } from "@/lib/api";
 import { formatPhone } from "@/lib/format";
 import { HOME, requestOtp, restoreSession, verifyOtp } from "@/lib/auth";
 
 type Step = "phone" | "code" | "role";
-type Problem = { kind: "error" | "offline"; message: string } | null;
+type Problem = { kind: "error" | "info"; message: string } | null;
 
-const RESEND_AFTER_SECONDS = 30;
 
 // What the user types after the fixed +234: "803 123 4567", "0803…", or a pasted "+234803…".
 function toPhone(input: string) {
@@ -21,7 +20,7 @@ function toPhone(input: string) {
 
 
 function toProblem(error: unknown): Problem {
-  if (error instanceof NetworkError) return { kind: "offline", message: error.message };
+  if (error instanceof NetworkError) return { kind: "info", message: error.message };
   if (error instanceof ApiError) {
     const firstFieldError = error.fieldErrors && Object.values(error.fieldErrors).flat()[0];
     return { kind: "error", message: firstFieldError ?? error.message };
@@ -73,12 +72,28 @@ export function LoginFlow({ suggestedRole }: { suggestedRole?: UserRole }) {
 
   const sendCode = (target: string) =>
     run(async () => {
-      const sent = await requestOtp(target);
-      setPhone(target);
-      setDevCode(sent.devCode);
-      setCode("");
-      setResendIn(RESEND_AFTER_SECONDS);
-      setStep("code");
+      try {
+        const sent = await requestOtp(target);
+        setPhone(target);
+        setDevCode(sent.devCode);
+        setCode("");
+        setResendIn(OTP_RESEND_COOLDOWN_SECONDS);
+        setStep("code");
+      } catch (error) {
+        const wait = error instanceof ApiError && error.status === 429 ? error.retryAfterSeconds : undefined;
+        // Within the cooldown, the code sent moments ago is still valid: go and enter it.
+        if (wait !== undefined && error instanceof ApiError && error.code === "OTP_RATE_LIMITED" && wait <= OTP_RESEND_COOLDOWN_SECONDS) {
+          if (target !== phone) setDevCode(undefined);
+          setPhone(target);
+          setResendIn(wait);
+          setStep("code");
+          setProblem({ kind: "info", message: "We sent a code to this number moments ago. Enter it below." });
+          return;
+        }
+        // Longer limits: show the API's message, and count down to when resending can work.
+        if (wait !== undefined && wait <= 3600) setResendIn(wait);
+        throw error;
+      }
     });
 
   function submitPhone(event: React.FormEvent) {
@@ -280,7 +295,7 @@ function ProblemMessage({ problem }: { problem: Problem }) {
       {problem && (
         <p
           className={
-            problem.kind === "offline"
+            problem.kind === "info"
               ? "rounded-2xl bg-info-soft px-4 py-3 text-sm font-semibold text-on-info-soft"
               : "rounded-2xl bg-danger-soft px-4 py-3 text-sm font-semibold text-on-danger-soft"
           }
