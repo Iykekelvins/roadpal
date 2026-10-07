@@ -13,6 +13,17 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
+  // Link previews need absolute image URLs; this is the public address they resolve against.
+  metadataBase: new URL("https://roadpal.iykekelvins.dev"),
+  // og:image / twitter:image come from opengraph-image.tsx; these fill in the rest of the card.
+  openGraph: {
+    siteName: "RoadPal",
+    type: "website",
+    locale: "en_NG",
+    title: "RoadPal – Tyre help that comes to you",
+    description: "Nearby vulcanizers send you a price. Pick one and watch them arrive on a live map.",
+  },
+  twitter: { card: "summary_large_image" },
   // Pages that set their own title get "<title> – RoadPal" from the template.
   title: {
     default: "RoadPal – Tyre help that comes to you",
