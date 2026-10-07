@@ -36,12 +36,36 @@ const EnvSchema = z.object({
   TERMII_BASE_URL: z.url().optional(), // account-specific, from the Termii dashboard
   TERMII_SENDER_ID: z.string().min(3).max(11).default('RoadPal'), // must be approved by Termii
 }).superRefine((env, ctx) => {
+  const fail = (path: string, message: string) => ctx.addIssue({ code: 'custom', path: [path], message });
+
   if (env.SMS_MODE === 'termii') {
     for (const key of ['TERMII_API_KEY', 'TERMII_BASE_URL'] as const) {
-      if (!env[key]) ctx.addIssue({ code: 'custom', path: [key], message: 'Required when SMS_MODE=termii' });
+      if (!env[key]) fail(key, 'Required when SMS_MODE=termii');
+    }
+  }
+
+  // Production refuses to start on settings that would quietly make it insecure or broken.
+  // A loud failure at deploy time beats a subtle one in front of users.
+  if (env.NODE_ENV === 'production') {
+    if (env.JWT_ACCESS_SECRET === EXAMPLE_JWT_SECRET) {
+      fail('JWT_ACCESS_SECRET', 'Still the .env.example placeholder: anyone could forge logins. Generate a new one.');
+    }
+    if (!/[?&]sslmode=(require|verify-ca|verify-full)\b/.test(env.DATABASE_URL)) {
+      fail('DATABASE_URL', 'Must use an encrypted connection (sslmode=require).');
+    }
+    const insecure = env.WEB_ORIGINS.filter((origin) => !origin.startsWith('https://'));
+    if (insecure.length) fail('WEB_ORIGINS', `Must all be https:// in production (got ${insecure.join(', ')}).`);
+    if (env.TRUST_PROXY_HOPS === 0) {
+      fail(
+        'TRUST_PROXY_HOPS',
+        'Must be at least 1 behind a host like Render, or every user shares one IP and the per-IP limit throttles them all together.',
+      );
     }
   }
 });
+
+/** The placeholder in .env.example; production refuses to run with it. */
+export const EXAMPLE_JWT_SECRET = 'change-me-to-a-random-string-of-at-least-32-chars';
 
 export type Env = z.infer<typeof EnvSchema>;
 

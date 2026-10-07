@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { buttonStyles } from "@/components/button-styles";
 import { Logo } from "@/components/logo";
+import { WakeServer } from "@/components/wake-server";
 
 // The informational site: full-width and responsive. App screens live in the (app) route group
 // with their own layout. Route groups (folders in parentheses) don't appear in the URL.
@@ -22,6 +23,7 @@ export default function MarketingLayout({ children }: LayoutProps<"/">) {
       </header>
 
       <main className="flex-1">{children}</main>
+      <WakeServer />
 
       <footer className="border-t border-border">
         <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 sm:flex-row sm:items-center sm:justify-between sm:px-6">

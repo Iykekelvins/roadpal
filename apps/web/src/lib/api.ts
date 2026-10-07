@@ -29,15 +29,41 @@ export class ApiError extends Error {
 /** When the network itself fails (no signal), as opposed to the API answering with an error. */
 export class NetworkError extends Error {}
 
+// Slow-request tracking. The free API host sleeps when idle and takes about a minute to wake;
+// requests are held meanwhile (not failed), so the app only needs to explain the wait.
+const SLOW_AFTER_MS = 4000;
+let slowRequests = 0;
+const slowListeners = new Set<() => void>();
+const notifySlow = () => slowListeners.forEach((listener) => listener());
+
+/** For useSyncExternalStore: is any API request taking unusually long right now? */
+export const subscribeToSlowRequests = (listener: () => void) => {
+  slowListeners.add(listener);
+  return () => void slowListeners.delete(listener);
+};
+export const isServerSlow = () => slowRequests > 0;
+
 async function send(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   headers.set("Content-Type", "application/json");
   headers.set(TOKEN_TRANSPORT_HEADER, "cookie");
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
+  let countedAsSlow = false;
+  const timer = setTimeout(() => {
+    countedAsSlow = true;
+    slowRequests++;
+    notifySlow();
+  }, SLOW_AFTER_MS);
   try {
     return await fetch(`/api${path}`, { ...init, headers, credentials: "same-origin" });
   } catch {
     throw new NetworkError("No connection. Check your signal and try again.");
+  } finally {
+    clearTimeout(timer);
+    if (countedAsSlow) {
+      slowRequests--;
+      notifySlow();
+    }
   }
 }
 
