@@ -1,6 +1,11 @@
 import { defineConfig } from 'drizzle-kit';
 
-process.loadEnvFile?.('.env');
+// Locally, settings come from .env; on Render there's no file, only environment variables.
+try {
+  process.loadEnvFile('.env');
+} catch {
+  // no .env: use the environment as-is
+}
 
 const url = process.env.DATABASE_URL_DIRECT;
 if (!url) throw new Error('DATABASE_URL_DIRECT is not set (see .env.example)');
